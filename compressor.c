@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
 #include <pthread.h>
 #include "endian.h"
 #include "yaz0.c"
@@ -36,6 +37,7 @@ args_t;
 uint32_t findTable();
 void getTableEnt(table_t*, uint32_t*, uint32_t);
 void* thread_func(void*);
+void errorCheck(int, char**);
 
 /* Globals */
 uint8_t* inROM;
@@ -44,24 +46,30 @@ uint32_t* realTab;
 uint32_t numThreads;
 pthread_mutex_t lock;
 
-int main()
+int main(int argc, char** argv)
 {
 	FILE* file;
 	uint32_t* fileTab;
 	int32_t tabStart, tabSize, tabCount;
 	int32_t size;
 	int32_t i;
+	char* name;
 	args_t* args;
 	table_t tab;
 	pthread_t thread;
 
+	errorCheck(argc, argv);
+
 	/* Open input, read into inROM */
-	file = fopen("ZOOTDEC.z64", "rb");
+	file = fopen(argv[1], "rb");
 	inROM = malloc(DCMPSIZE);
 	outROM = malloc(COMPSIZE);
 	fread(inROM, DCMPSIZE, 1, file);
 	memset(outROM, 0, COMPSIZE);
 	fclose(file);
+	//i = 0;
+	//while(i < COMPSIZE)
+		//outROM[i] = i++;
 
 	/* Find the file table and relevant info */
 	/* Location, Size, Number of elements */
@@ -71,10 +79,9 @@ int main()
 	getTableEnt(&tab, fileTab, 2);
 	tabSize = tab.endV - tab.startV;
 	tabCount = tabSize / 16;
-	memcpy(fileTab, inROM + tabStart, tabSize);
-
+	
 	/* Read in compression table */
-	file = fopen("table.txt", "rb");
+	file = fopen("table.bin", "rb");
 	fseek(file, 0, SEEK_END);
 	size = ftell(file);
 	fseek(file, 0, SEEK_SET);
@@ -113,11 +120,34 @@ int main()
 		sleep(5);
 	}
 
-	file = fopen("zoot-tmp.z64", "wb");
+	/* Clean up stuff */	
+	pthread_mutex_destroy(&lock);
+	free(realTab);
+	free(inROM);
+
+	/* Make and fill the output ROM */
+	i = 0;
+	size = strlen(argv[1]);
+	name = malloc(size + 5);
+	strcpy(name, argv[1]);
+	while(i < size)
+	{
+		if(name[i] == '.')
+		{
+			name[i] = '\0';
+			break;
+		}
+		i++;
+	}
+	sprintf(name, "%s-comp.z64", name);
+	file = fopen(name, "wb");
 	fwrite(outROM, COMPSIZE, 1, file);
 	fclose(file);
+	free(outROM);
 
-	fix_crc("zoot-tmp.z64");
+	/* Fix the CRC using some kind of magic or something */
+	fix_crc(name);
+	free(name);
 	
 	return(0);
 }
@@ -184,7 +214,7 @@ void* thread_func(void* arg)
 	/* If needed, compress and fix size */
 	/* Otherwise, just copy src into outROM */
 	if(t->endP != 0x00000000)
-	{
+	{	
 		yaz0_encode(a->src, a->src_size, a->dst, &(a->dst_size));
 		a->dst_size = ((a->dst_size + 31) & -16);
 		memcpy(outROM + t->startP, a->dst, a->dst_size);
@@ -206,4 +236,46 @@ void* thread_func(void* arg)
 	pthread_mutex_unlock(&lock);
 
 	return(NULL);
+}
+
+void errorCheck(int argc, char** argv)
+{
+	int i;
+	FILE* file;
+
+	/* Check for arguments */
+	if(argc != 2)
+	{
+		fprintf(stderr, "Usage: Compress [Input ROM]\n");
+		exit(1);
+	}
+
+	/* Check that input ROM exists */
+	file = fopen(argv[1], "rb");
+	if(file == NULL)
+	{
+		perror(argv[1]);
+		fclose(file);
+		exit(1);
+	}
+
+	/* Check that input ROM is correct size */
+	fseek(file, 0, SEEK_END);
+	i = ftell(file);
+	fclose(file);	
+	if(i != DCMPSIZE)
+	{
+		fprintf(stderr, "Warning: Invalid input ROM size\n");
+		exit(1);
+	}
+
+	/* Check that table.bin exists */
+	file = fopen("table.bin", "rb");
+	if(file == NULL)
+	{
+		perror("table.bin");
+		fclose(file);
+		exit(1);
+	}
+	fclose(file);
 }

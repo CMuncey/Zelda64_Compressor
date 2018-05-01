@@ -10,16 +10,28 @@ This program will probably make your CPU fans run very loud, as it pins every co
 
 ---
 
-Compiling the compressor: make compressor 
+Although you shouldn't need to compile, here's what you'll need to use to do so
 
-Compiling the table extractor: make tableExtractor
+Compiling the compressor (Mac/Linux): gcc -g -O3 -o Compress.out compressor.c
 
-Compiling both: make all
+Compiling the compressor (Windows): gcc -g -O3 -o Compress.exe compressor.c -lws2_32
 
-~~You'll probably want MinGW for this if you're on Windows. That's what I used anyway.~~ Untested on Windows, will update soon(tm).
+Compiling the table extractor (Mac/Linux): gcc -g -O3 -o TabExt.out tableExtractor.c
+
+Compiling the table extractor (Windows): gcc -g -O3 -o TabExt.exe tableExtractor.c -lws2_32
+
+I got this to compile on Windows, but I needed a specific version of minGW to do it. I downloaded msys2 (https://www.msys2.org/) then used *pacman -S mingw-w64-x86_64-gcc* to get a version that could compile it, so hopefully that will work.
 
 ---
 
-Usage: yaz0_comp
+Compressor Usage: Compress.exe [Input ROM]
 
-Notes: At the moment (It will change, probably with the Windows compatibility fix), the program assumes you have a decompressed ROM of OoT called "ZOOTDEC.z64" (No quotes) and a file table called "table.txt" (Also no quotes) in the same directory/folder as the program. It will produce a compressed ROM called "zoot-tmp.z64" (Again, no quotes) in the same directory/folder.
+Table Extractor usage: TabExt.exe [Input ROM]
+
+Compressor Notes: The compressor relies on a file called *table.bin* being in the same directory as the compressor executable. This file is created by the table extractor, so if you need one, just run that. The compressor will take whatever name you gave it as an argument, and add "-comp" to the end. So for example, if you gave it Zelda.z64, it would produce Zelda-comp.z64, which is the compressed ROM.
+
+Table Extractor Notes: The table extractor takes a compressed ROM, and extracts the file table that's in the ROM for the compressor to use
+
+General Notes: I've only tested this compressor for NTSC 1.0 ROMs, because this was made to complement the OoT Item Randomiser so that it would be easier to make VC injects of the randomised ROMs. It may work with other versions, but I make no guarantees.
+
+

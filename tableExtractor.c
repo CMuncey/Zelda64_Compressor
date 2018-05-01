@@ -6,7 +6,6 @@
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
-#define DCMPSIZE 0x4000000
 
 /* Structs */
 typedef struct 
@@ -30,12 +29,13 @@ table_t;
 /* Functions */
 uint32_t findTable();
 table_t getTableEnt();
+void errorCheck(int, char**);
 
 /* Globals */
 uint8_t* inROM;
 uint32_t* fileTab;
 
-int main()
+int main(int argc, char** argv)
 {
 	FILE* file;
 	int32_t tabStart, tabSize, tabCount;
@@ -44,11 +44,15 @@ int main()
 	args_t* args;
 	table_t tab;
 
+	errorCheck(argc, argv);
+
+	/* Open input, read into inROM */
 	file = fopen("ZOOT.z64", "rb");
 	inROM = malloc(COMPSIZE);
 	fread(inROM, COMPSIZE, 1, file);
 	fclose(file);
 
+	/* Find file table, write to fileTab */
 	tabStart = findTable();
 	fileTab = (uint32_t*)(inROM + tabStart);
 	tab = getTableEnt(2);
@@ -57,8 +61,9 @@ int main()
 	fileTab = malloc(tabSize);
 	memcpy(fileTab, inROM + tabStart, tabSize);
 	free(inROM);
-	
-	file = fopen("table.txt", "w");
+
+	/* Write fileTab to table.bin */	
+	file = fopen("table.bin", "wb");
 	fwrite(fileTab, tabSize, 1, file);
 	fclose(file);
 	free(fileTab);
@@ -83,6 +88,7 @@ uint32_t findTable()
 			{
 				if((htobe32(temp[i+2]) & 0xFF000000) == 0x64000000)
 				{
+					/* Find first entry in file table */
 					i += 8;
 					while(htobe32(temp[i]) != 0x00001060)
 						i += 4;
@@ -108,4 +114,36 @@ table_t getTableEnt(uint32_t i)
 	tab.endP   = htobe32(fileTab[(i*4)+3]);
 
 	return(tab);
+}
+
+void errorCheck(int argc, char** argv)
+{
+	int i;
+	FILE* file;
+
+	/* Check for arguments */
+	if(argc != 2)
+	{
+		fprintf(stderr, "Usage: TabExt [Input ROM]\n");
+		exit(1);
+	}
+
+	/* Check that input ROM exists */
+	file = fopen(argv[1], "rb");
+	if(file == NULL)
+	{
+		perror(argv[1]);
+		fclose(file);
+		exit(1);
+	}
+
+	/* Check that input ROM is correct size */
+	fseek(file, 0, SEEK_END);
+	i = ftell(file);
+	fclose(file);	
+	if(i != COMPSIZE)
+	{
+		fprintf(stderr, "Warning: Invalid input ROM size\n");
+		exit(1);
+	}
 }

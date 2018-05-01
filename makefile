@@ -11,10 +11,10 @@ all: $(EXECUTABLES)
 	$(CC) $(CFLAGS) -c $*.c
 
 compressor: compressor.o
-	$(CC) $(CFLAGS) -o yaz0_comp compressor.o -lpthread
+	$(CC) $(CFLAGS) -O3 -o Compress.out compressor.o -lpthread
 
 tableExtractor: tableExtractor.o
-	$(CC) $(CFLAGS) -o tableExt tableExtractor.o
+	$(CC) $(CFLAGS) -O3 -o TabExt.out tableExtractor.o
 
 clean:
-	rm yaz0_comp tableExt *.o
+	rm Compress.out TabExt.out *.o
