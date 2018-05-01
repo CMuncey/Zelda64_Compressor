@@ -47,7 +47,7 @@ int main(int argc, char** argv)
 	errorCheck(argc, argv);
 
 	/* Open input, read into inROM */
-	file = fopen("ZOOT.z64", "rb");
+	file = fopen(argv[1], "rb");
 	inROM = malloc(COMPSIZE);
 	fread(inROM, COMPSIZE, 1, file);
 	fclose(file);
