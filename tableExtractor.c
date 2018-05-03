@@ -7,6 +7,13 @@
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 
+#if BYTE_ORDER==LITTLE_ENDIAN
+#define htobe32(x) _internal_htobe32(x)
+#elif BYTE_ORDER==BIG_ENDIAN
+#define htobe32(x) (x)
+#endif
+
+
 /* Structs */
 typedef struct 
 {
@@ -30,6 +37,7 @@ table_t;
 uint32_t findTable();
 table_t getTableEnt();
 void errorCheck(int, char**);
+uint32_t _internal_htobe32(uint32_t);
 
 /* Globals */
 uint8_t* inROM;
@@ -146,4 +154,11 @@ void errorCheck(int argc, char** argv)
 		fprintf(stderr, "Warning: Invalid input ROM size\n");
 		exit(1);
 	}
+}
+
+uint32_t _internal_htobe32(uint32_t in) {
+	return (in >> 24) & 0xff |
+		(in << 8) & 0xff0000 |
+		(in >> 8) & 0xff00 |
+		(in << 24) & 0xff000000;
 }
