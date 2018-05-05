@@ -4,13 +4,18 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
-#include "endian.h"
 #include "yaz0.c"
 #include "crc.c"
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
+
+#if BYTE_ORDER==LITTLE_ENDIAN
+#define htobe32(x) _internal_htobe32(x)
+#elif BYTE_ORDER==BIG_ENDIAN
+#define htobe32(x) (x)
+#endif
 
 /* Structs */
 typedef struct
@@ -38,6 +43,7 @@ uint32_t findTable();
 void getTableEnt(table_t*, uint32_t*, uint32_t);
 void* thread_func(void*);
 void errorCheck(int, char**);
+uint32_t _internal_htobe32(uint32_t);
 
 /* Globals */
 uint8_t* inROM;
@@ -63,9 +69,8 @@ int main(int argc, char** argv)
 	/* Open input, read into inROM */
 	file = fopen(argv[1], "rb");
 	inROM = malloc(DCMPSIZE);
-	outROM = malloc(COMPSIZE);
+	outROM = calloc(COMPSIZE, sizeof(uint8_t));
 	fread(inROM, DCMPSIZE, 1, file);
-	memset(outROM, 0, COMPSIZE);
 	fclose(file);
 	//i = 0;
 	//while(i < COMPSIZE)
@@ -117,6 +122,7 @@ int main(int argc, char** argv)
 	while(numThreads != 0)
 	{
 		printf("~%d threads remaining\n", numThreads);
+		fflush(stdout);
 		sleep(5);
 	}
 
@@ -207,8 +213,7 @@ void* thread_func(void* arg)
 	a->src_size = t->endV - t->startV;
 	a->dst_size = a->src_size + 0x160;
 	a->src = malloc(a->src_size);
-	a->dst = malloc(a->dst_size);
-	memset(a->dst, 0, a->dst_size);
+	a->dst = calloc(a->dst_size, sizeof(uint8_t));
 	memcpy(a->src, inROM + t->startV, a->src_size);
 
 	/* If needed, compress and fix size */
@@ -278,4 +283,10 @@ void errorCheck(int argc, char** argv)
 		exit(1);
 	}
 	fclose(file);
+}
+uint32_t _internal_htobe32(uint32_t in) {
+	return (in >> 24) & 0xff |
+		(in << 8) & 0xff0000 |
+		(in >> 8) & 0xff00 |
+		(in << 24) & 0xff000000;
 }
