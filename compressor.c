@@ -11,12 +11,6 @@
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
 
-#if BYTE_ORDER==LITTLE_ENDIAN
-#define htobe32(x) _internal_htobe32(x)
-#elif BYTE_ORDER==BIG_ENDIAN
-#define htobe32(x) (x)
-#endif
-
 /* Structs */
 typedef struct
 {
@@ -43,7 +37,7 @@ uint32_t findTable();
 void getTableEnt(table_t*, uint32_t*, uint32_t);
 void* thread_func(void*);
 void errorCheck(int, char**);
-uint32_t _internal_htobe32(uint32_t);
+uint32_t htobe_32(uint32_t);
 
 /* Globals */
 uint8_t* inROM;
@@ -72,9 +66,6 @@ int main(int argc, char** argv)
 	outROM = calloc(COMPSIZE, sizeof(uint8_t));
 	fread(inROM, DCMPSIZE, 1, file);
 	fclose(file);
-	//i = 0;
-	//while(i < COMPSIZE)
-		//outROM[i] = i++;
 
 	/* Find the file table and relevant info */
 	/* Location, Size, Number of elements */
@@ -145,7 +136,7 @@ int main(int argc, char** argv)
 		}
 		i++;
 	}
-	sprintf(name, "%s-comp.z64", name);
+	strcat(name, "-comp.z64");
 	file = fopen(name, "wb");
 	fwrite(outROM, COMPSIZE, 1, file);
 	fclose(file);
@@ -169,15 +160,15 @@ uint32_t findTable()
 	while(i+4 < UINTSIZE)
 	{
 		/* This marks the begining of the filetable */
-		if(htobe32(temp[i]) == 0x7A656C64)
+		if(htobe_32(temp[i]) == 0x7A656C64)
 		{
-			if(htobe32(temp[i+1]) == 0x61407372)
+			if(htobe_32(temp[i+1]) == 0x61407372)
 			{
-				if((htobe32(temp[i+2]) & 0xFF000000) == 0x64000000)
+				if((htobe_32(temp[i+2]) & 0xFF000000) == 0x64000000)
 				{
 					/* Find first entry in file table */
 					i += 8;
-					while(htobe32(temp[i]) != 0x00001060)
+					while(htobe_32(temp[i]) != 0x00001060)
 						i += 4;
 					return((i-4) * sizeof(uint32_t));
 				}
@@ -193,10 +184,10 @@ uint32_t findTable()
 
 void getTableEnt(table_t* tab, uint32_t* files, uint32_t i)
 {
-	tab->startV = htobe32(files[i*4]);
-	tab->endV   = htobe32(files[(i*4)+1]);
-	tab->startP = htobe32(files[(i*4)+2]);
-	tab->endP   = htobe32(files[(i*4)+3]);
+	tab->startV = htobe_32(files[i*4]);
+	tab->endV   = htobe_32(files[(i*4)+1]);
+	tab->startP = htobe_32(files[(i*4)+2]);
+	tab->endP   = htobe_32(files[(i*4)+3]);
 }
 
 void* thread_func(void* arg)
@@ -208,6 +199,8 @@ void* thread_func(void* arg)
 	a = arg;
 	t = a->tab;
 	i = a->num;
+
+	//printf("Thread %d starting\n", i);
 
 	/* Setup the stuff*/
 	a->src_size = t->endV - t->startV;
@@ -279,14 +272,22 @@ void errorCheck(int argc, char** argv)
 	if(file == NULL)
 	{
 		perror("table.bin");
+		fprintf(stderr, "If you do not have a table.bin file, please use TabExt first\n");
 		fclose(file);
 		exit(1);
 	}
 	fclose(file);
 }
-uint32_t _internal_htobe32(uint32_t in) {
-	return (in >> 24) & 0xff |
-		(in << 8) & 0xff0000 |
-		(in >> 8) & 0xff00 |
-		(in << 24) & 0xff000000;
+
+uint32_t htobe_32(uint32_t in)
+{
+	uint32_t rv;
+
+	rv = 0;
+	rv |= (in >> 24) & 0x000000FF;
+	rv |= (in >> 8)  & 0x0000FF00;
+	rv |= (in << 8)  & 0x00FF0000;
+	rv |= (in << 24) & 0xFF000000;
+
+	return(rv);
 }

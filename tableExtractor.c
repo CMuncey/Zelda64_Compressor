@@ -7,13 +7,6 @@
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 
-#if BYTE_ORDER==LITTLE_ENDIAN
-#define htobe32(x) _internal_htobe32(x)
-#elif BYTE_ORDER==BIG_ENDIAN
-#define htobe32(x) (x)
-#endif
-
-
 /* Structs */
 typedef struct 
 {
@@ -37,7 +30,7 @@ table_t;
 uint32_t findTable();
 table_t getTableEnt();
 void errorCheck(int, char**);
-uint32_t _internal_htobe32(uint32_t);
+uint32_t htobe_32(uint32_t);
 
 /* Globals */
 uint8_t* inROM;
@@ -90,15 +83,15 @@ uint32_t findTable()
 	while(i+4 < UINTSIZE)
 	{
 		/* This marks the begining of the filetable */
-		if(htobe32(temp[i]) == 0x7A656C64)
+		if(htobe_32(temp[i]) == 0x7A656C64)
 		{
-			if(htobe32(temp[i+1]) == 0x61407372)
+			if(htobe_32(temp[i+1]) == 0x61407372)
 			{
-				if((htobe32(temp[i+2]) & 0xFF000000) == 0x64000000)
+				if((htobe_32(temp[i+2]) & 0xFF000000) == 0x64000000)
 				{
 					/* Find first entry in file table */
 					i += 8;
-					while(htobe32(temp[i]) != 0x00001060)
+					while(htobe_32(temp[i]) != 0x00001060)
 						i += 4;
 					return((i-4) * sizeof(uint32_t));
 				}
@@ -116,10 +109,10 @@ table_t getTableEnt(uint32_t i)
 {
 	table_t tab;
 
-	tab.startV = htobe32(fileTab[i*4]);
-	tab.endV   = htobe32(fileTab[(i*4)+1]);
-	tab.startP = htobe32(fileTab[(i*4)+2]);
-	tab.endP   = htobe32(fileTab[(i*4)+3]);
+	tab.startV = htobe_32(fileTab[i*4]);
+	tab.endV   = htobe_32(fileTab[(i*4)+1]);
+	tab.startP = htobe_32(fileTab[(i*4)+2]);
+	tab.endP   = htobe_32(fileTab[(i*4)+3]);
 
 	return(tab);
 }
@@ -156,9 +149,15 @@ void errorCheck(int argc, char** argv)
 	}
 }
 
-uint32_t _internal_htobe32(uint32_t in) {
-	return (in >> 24) & 0xff |
-		(in << 8) & 0xff0000 |
-		(in >> 8) & 0xff00 |
-		(in << 24) & 0xff000000;
+uint32_t htobe_32(uint32_t in)
+{
+	uint32_t rv;
+
+	rv = 0;
+	rv |= (in >> 24) & 0x000000FF;
+	rv |= (in >> 8)  & 0x0000FF00;
+	rv |= (in << 8)  & 0x00FF0000;
+	rv |= (in << 24) & 0xFF000000;
+
+	return(rv);
 }
