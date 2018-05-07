@@ -199,9 +199,6 @@ yaz0_encode(u8 * src, int src_size, u8 *dst, int *dst_size )
   // write 4 bytes uncompressed size
   W32(dst + 4, src_size);
   
-  // write 8 bytes unused dummy 
-  memset(dst + 8, 0, 8);
-  
   //encode
   *dst_size = yaz0_encode_internal(src, src_size, dst + 16);
 }

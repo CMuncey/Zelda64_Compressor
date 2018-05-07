@@ -6,17 +6,9 @@
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
+#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
 
 /* Structs */
-typedef struct 
-{
-	uint8_t* src;
-	uint8_t* dst;
-	int src_size;
-	int dst_size;
-}
-args_t;
-
 typedef struct
 {
 	uint32_t startV;
@@ -30,7 +22,6 @@ table_t;
 uint32_t findTable();
 table_t getTableEnt();
 void errorCheck(int, char**);
-uint32_t htobe_32(uint32_t);
 
 /* Globals */
 uint8_t* inROM;
@@ -39,10 +30,8 @@ uint32_t* fileTab;
 int main(int argc, char** argv)
 {
 	FILE* file;
-	int32_t tabStart, tabSize, tabCount;
-	int32_t size;
-	int32_t i; 
-	args_t* args;
+	int32_t tabStart, tabSize, tabCount, i;
+	uint8_t* refTab;
 	table_t tab;
 
 	errorCheck(argc, argv);
@@ -59,40 +48,53 @@ int main(int argc, char** argv)
 	tab = getTableEnt(2);
 	tabSize = tab.endV - tab.startV;
 	tabCount = tabSize / 16;
-	fileTab = malloc(tabSize);
-	memcpy(fileTab, inROM + tabStart, tabSize);
-	free(inROM);
+
+	/* Fill refTab with 1 for compressed, 0 otherwise */
+	refTab = malloc(tabCount);
+	for(i = 0; i < tabCount; i++)
+	{
+		tab = getTableEnt(i);
+		refTab[i] = (tab.endP == 0) ? '0' : '1';
+	}
 
 	/* Write fileTab to table.bin */	
-	file = fopen("table.bin", "wb");
-	fwrite(fileTab, tabSize, 1, file);
+	file = fopen("table.txt", "w");
+	fwrite(refTab, tabCount, 1, file);
 	fclose(file);
-	free(fileTab);
+	free(inROM);
+	free(refTab);
 	
 	return(0);
 }
 
 uint32_t findTable()
 {
-	int i;
-	uint32_t* temp;
+	uint32_t i, temp;
+	uint32_t* tempROM;
 
 	i = 0;
-	temp = (uint32_t*)inROM;
+	tempROM = (uint32_t*)inROM;
 
 	while(i+4 < UINTSIZE)
 	{
 		/* This marks the begining of the filetable */
-		if(htobe_32(temp[i]) == 0x7A656C64)
+		byteSwap(temp, tempROM[i]);
+		if(temp == 0x7A656C64)
 		{
-			if(htobe_32(temp[i+1]) == 0x61407372)
+			byteSwap(temp, tempROM[i+1]);
+			if(temp == 0x61407372)
 			{
-				if((htobe_32(temp[i+2]) & 0xFF000000) == 0x64000000)
+				byteSwap(temp, tempROM[i+2]);
+				if((temp & 0xFF000000) == 0x64000000)
 				{
 					/* Find first entry in file table */
 					i += 8;
-					while(htobe_32(temp[i]) != 0x00001060)
+					byteSwap(temp, tempROM[i]);
+					while(temp != 0x00001060)
+					{
 						i += 4;
+						byteSwap(temp, tempROM[i]);
+					}
 					return((i-4) * sizeof(uint32_t));
 				}
 			}
@@ -109,10 +111,10 @@ table_t getTableEnt(uint32_t i)
 {
 	table_t tab;
 
-	tab.startV = htobe_32(fileTab[i*4]);
-	tab.endV   = htobe_32(fileTab[(i*4)+1]);
-	tab.startP = htobe_32(fileTab[(i*4)+2]);
-	tab.endP   = htobe_32(fileTab[(i*4)+3]);
+	byteSwap(tab.startV, fileTab[i*4]);
+	byteSwap(tab.endV,   fileTab[(i*4)+1]);
+	byteSwap(tab.startP, fileTab[(i*4)+2]);
+	byteSwap(tab.endP,   fileTab[(i*4)+3]);
 
 	return(tab);
 }
@@ -141,23 +143,10 @@ void errorCheck(int argc, char** argv)
 	/* Check that input ROM is correct size */
 	fseek(file, 0, SEEK_END);
 	i = ftell(file);
-	fclose(file);	
+	fclose(file);
 	if(i != COMPSIZE)
 	{
 		fprintf(stderr, "Warning: Invalid input ROM size\n");
 		exit(1);
 	}
-}
-
-uint32_t htobe_32(uint32_t in)
-{
-	uint32_t rv;
-
-	rv = 0;
-	rv |= (in >> 24) & 0x000000FF;
-	rv |= (in >> 8)  & 0x0000FF00;
-	rv |= (in << 8)  & 0x00FF0000;
-	rv |= (in << 24) & 0xFF000000;
-
-	return(rv);
 }

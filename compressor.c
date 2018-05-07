@@ -10,6 +10,7 @@
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
+#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
 
 /* Structs */
 typedef struct
@@ -28,31 +29,40 @@ typedef struct
 	uint8_t* dst;
 	int src_size;
 	int dst_size;
-	table_t* tab;
+	table_t  tab;
 }
 args_t;
+
+typedef struct
+{
+	table_t table;
+	uint8_t* data;
+	uint8_t  comp;
+	uint32_t size;
+}
+output_t;
 
 /* Functions */
 uint32_t findTable();
 void getTableEnt(table_t*, uint32_t*, uint32_t);
 void* thread_func(void*);
 void errorCheck(int, char**);
-uint32_t htobe_32(uint32_t);
 
 /* Globals */
 uint8_t* inROM;
 uint8_t* outROM;
-uint32_t* realTab;
+uint8_t* refTab;
 uint32_t numThreads;
 pthread_mutex_t lock;
+output_t* out;
 
 int main(int argc, char** argv)
 {
 	FILE* file;
 	uint32_t* fileTab;
 	int32_t tabStart, tabSize, tabCount;
-	int32_t size;
-	int32_t i;
+	volatile int32_t prev, prev_comp;
+	int32_t i, size;
 	char* name;
 	args_t* args;
 	table_t tab;
@@ -63,41 +73,37 @@ int main(int argc, char** argv)
 	/* Open input, read into inROM */
 	file = fopen(argv[1], "rb");
 	inROM = malloc(DCMPSIZE);
-	outROM = calloc(COMPSIZE, sizeof(uint8_t));
 	fread(inROM, DCMPSIZE, 1, file);
 	fclose(file);
 
 	/* Find the file table and relevant info */
-	/* Location, Size, Number of elements */
 	tabStart = findTable();
-	memcpy(outROM, inROM, tabStart);
 	fileTab = (uint32_t*)(inROM + tabStart);
 	getTableEnt(&tab, fileTab, 2);
 	tabSize = tab.endV - tab.startV;
 	tabCount = tabSize / 16;
 	
-	/* Read in compression table */
-	file = fopen("table.bin", "rb");
+	/* Read in compression reference */
+	file = fopen("table.txt", "r");
 	fseek(file, 0, SEEK_END);
 	size = ftell(file);
 	fseek(file, 0, SEEK_SET);
-	realTab = malloc(size);
-	fread(realTab, size, 1, file);
-	memcpy(outROM + tabStart, realTab, tabSize);
+	refTab = malloc(size);
+	for(i = 0; i < size; i++)
+		refTab[i] = (fgetc(file) == '1') ? 1 : 0;
 	fclose(file);
 
 	/* Initialise some stuff */
+	out = malloc(sizeof(output_t) * tabCount);
 	pthread_mutex_init(&lock, NULL);
 	numThreads = 0;
-	i = 3;
 
 	/* Create all the threads */
-	while(i < tabCount)
+	for(i = 3; i < tabCount; i++)
 	{
 		args = malloc(sizeof(args_t));
-		args->tab = malloc(sizeof(table_t));
 
-		getTableEnt(args->tab, realTab, i);
+		getTableEnt(&(args->tab), fileTab, i);
 		args->num = i;
 
 		pthread_mutex_lock(&lock);
@@ -105,8 +111,6 @@ int main(int argc, char** argv)
 		pthread_mutex_unlock(&lock);
 
 		pthread_create(&thread, NULL, thread_func, args);
-
-		i++;
 	}
 
 	/* Wait for all of the threads to finish */
@@ -117,10 +121,44 @@ int main(int argc, char** argv)
 		sleep(5);
 	}
 
-	/* Clean up stuff */	
+	/* Setup for copying to outROM */
+	outROM = calloc(COMPSIZE, sizeof(uint8_t));
+	memcpy(outROM, inROM, tabStart + tabSize);
 	pthread_mutex_destroy(&lock);
-	free(realTab);
+	prev = tabStart + tabSize;
+	prev_comp = refTab[2];
+	tabStart += 0x20;
+	free(refTab);
 	free(inROM);
+
+	/* Copy to outROM loop */
+	for(i = 3; i < tabCount; i++)
+	{
+		tab = out[i].table;
+		size = out[i].size;
+		tabStart += 0x10;
+
+		/* Finish table and copy to outROM */
+		if(tab.startV != tab.endV)
+		{
+			tab.startP = prev;
+			if(out[i].comp)
+				tab.endP = tab.startP + size;
+			memcpy(outROM + tab.startP, out[i].data, size);
+			byteSwap(tab.startV, tab.startV);
+			byteSwap(tab.endV, tab.endV);
+			byteSwap(tab.startP, tab.startP);
+			byteSwap(tab.endP, tab.endP);
+			memcpy(outROM + tabStart, &tab, sizeof(table_t));
+		}
+
+		/* Setup for next iteration */
+		prev += size;
+		prev_comp = out[i].comp;
+
+		free(out[i].data);
+	}
+	free(out);
 
 	/* Make and fill the output ROM */
 	i = 0;
@@ -151,25 +189,32 @@ int main(int argc, char** argv)
 
 uint32_t findTable()
 {
-	int i;
-	uint32_t* temp;
+	uint32_t i, temp;
+	uint32_t* tempROM;
 
 	i = 0;
-	temp = (uint32_t*)inROM;
+	tempROM = (uint32_t*)inROM;
 
 	while(i+4 < UINTSIZE)
 	{
 		/* This marks the begining of the filetable */
-		if(htobe_32(temp[i]) == 0x7A656C64)
+		byteSwap(temp, tempROM[i]);
+		if(temp == 0x7A656C64)
 		{
-			if(htobe_32(temp[i+1]) == 0x61407372)
+			byteSwap(temp, tempROM[i+1]);
+			if(temp == 0x61407372)
 			{
-				if((htobe_32(temp[i+2]) & 0xFF000000) == 0x64000000)
+				byteSwap(temp, tempROM[i+2]);
+				if((temp & 0xFF000000) == 0x64000000)
 				{
 					/* Find first entry in file table */
 					i += 8;
-					while(htobe_32(temp[i]) != 0x00001060)
+					byteSwap(temp, tempROM[i]);
+					while(temp != 0x00001060)
+					{
 						i += 4;
+						byteSwap(temp, tempROM[i]);
+					}
 					return((i-4) * sizeof(uint32_t));
 				}
 			}
@@ -184,48 +229,48 @@ uint32_t findTable()
 
 void getTableEnt(table_t* tab, uint32_t* files, uint32_t i)
 {
-	tab->startV = htobe_32(files[i*4]);
-	tab->endV   = htobe_32(files[(i*4)+1]);
-	tab->startP = htobe_32(files[(i*4)+2]);
-	tab->endP   = htobe_32(files[(i*4)+3]);
+	byteSwap(tab->startV, files[i*4]);
+	byteSwap(tab->endV,   files[(i*4)+1]);
+	byteSwap(tab->startP, files[(i*4)+2]);
+	byteSwap(tab->endP,   files[(i*4)+3]);
 }
 
 void* thread_func(void* arg)
 {
 	args_t* a;
-	table_t* t;
+	table_t t;
 	int i;
 
 	a = arg;
 	t = a->tab;
 	i = a->num;
 
-	//printf("Thread %d starting\n", i);
-
-	/* Setup the stuff*/
-	a->src_size = t->endV - t->startV;
-	a->dst_size = a->src_size + 0x160;
-	a->src = malloc(a->src_size);
-	a->dst = calloc(a->dst_size, sizeof(uint8_t));
-	memcpy(a->src, inROM + t->startV, a->src_size);
+	/* Setup the src*/
+	a->src_size = t.endV - t.startV;
+	a->src = inROM + t.startV;
 
 	/* If needed, compress and fix size */
 	/* Otherwise, just copy src into outROM */
-	if(t->endP != 0x00000000)
-	{	
+	if(refTab[i])
+	{
+		a->dst_size = a->src_size + 0x160;
+		a->dst = calloc(a->dst_size, sizeof(uint8_t));
 		yaz0_encode(a->src, a->src_size, a->dst, &(a->dst_size));
-		a->dst_size = ((a->dst_size + 31) & -16);
-		memcpy(outROM + t->startP, a->dst, a->dst_size);
+		a->src_size = ((a->dst_size + 31) & -16);
+		out[i].comp = 1;
+		out[i].data = malloc(a->src_size);
+		memcpy(out[i].data, a->dst, a->src_size);
+		free(a->dst);
 	}
 	else
 	{
-		memcpy(outROM + t->startP, a->src, a->src_size);
+		out[i].comp = 0;
+		out[i].data = malloc(a->src_size);
+		memcpy(out[i].data, a->src, a->src_size);
 	}
 
-	/* Free memory to avoid leaks */
-	free(a->src);
-	free(a->dst);
-	free(a->tab);
+	out[i].table = t;
+	out[i].size = a->src_size;
 	free(a);
 
 	/* Decrement thread counter */
@@ -268,26 +313,13 @@ void errorCheck(int argc, char** argv)
 	}
 
 	/* Check that table.bin exists */
-	file = fopen("table.bin", "rb");
+	file = fopen("table.txt", "r");
 	if(file == NULL)
 	{
-		perror("table.bin");
-		fprintf(stderr, "If you do not have a table.bin file, please use TabExt first\n");
+		perror("table.txt");
+		fprintf(stderr, "If you do not have a table.txt file, please use TabExt first\n");
 		fclose(file);
 		exit(1);
 	}
 	fclose(file);
-}
-
-uint32_t htobe_32(uint32_t in)
-{
-	uint32_t rv;
-
-	rv = 0;
-	rv |= (in >> 24) & 0x000000FF;
-	rv |= (in >> 8)  & 0x0000FF00;
-	rv |= (in << 8)  & 0x00FF0000;
-	rv |= (in << 24) & 0xFF000000;
-
-	return(rv);
 }
