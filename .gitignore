@@ -6,3 +6,5 @@
 *.bin
 *.exe
 *.out
+*.z64
+table.txt
