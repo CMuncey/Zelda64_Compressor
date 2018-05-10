@@ -63,7 +63,6 @@ uint8_t* outROM;
 uint8_t* refTab;
 uint32_t numThreads;
 pthread_mutex_t lock;
-pthread_mutex_t next_mutex;
 output_t* out;
 int files;
 int next_file;
@@ -110,7 +109,6 @@ int main(int argc, char** argv)
 	/* Initialise some stuff */
 	out = malloc(sizeof(output_t) * tabCount);
 	pthread_mutex_init(&lock, NULL);
-	pthread_mutex_init(&next_mutex, NULL);
 	numThreads = 0;
 
 	int procs = numprocs();
@@ -130,7 +128,7 @@ int main(int argc, char** argv)
 	while (numThreads > 0)
 	{
 		sleep(1);
-		printf("%d threads %d\r\n", numThreads, next_file);
+		printf("%d/%d files Done\n", next_file, tabCount);
 		fflush(stdout);
 	}
 
@@ -369,9 +367,9 @@ int numprocs() {
 
 int grab_next() {
 	int file = 0;
-	pthread_mutex_lock(&next_mutex);
+	pthread_mutex_lock(&lock);
 	file = next_file++;
-	pthread_mutex_unlock(&next_mutex);
+	pthread_mutex_unlock(&lock);
 	if (file > files)
 		return -1;
 	return file;
