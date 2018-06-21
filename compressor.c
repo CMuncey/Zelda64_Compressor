@@ -49,6 +49,12 @@ typedef struct
 }
 output_t;
 
+typedef struct
+{
+	uint32_t start;
+	uint32_t len;
+}index_entry;
+
 /* Functions */
 uint32_t findTable();
 void getTableEnt(table_t*, uint32_t*, uint32_t);
@@ -60,6 +66,8 @@ int grab_next();
 /* Globals */
 uint8_t* inROM;
 uint8_t* outROM;
+uint8_t *archive;
+uint8_t *vanillaROM;
 uint8_t* refTab;
 uint32_t numThreads;
 pthread_mutex_t lock;
@@ -67,6 +75,7 @@ output_t* out;
 int files;
 int next_file;
 uint32_t* fileTab;
+index_entry *entries;
 
 int main(int argc, char** argv)
 {
@@ -85,6 +94,23 @@ int main(int argc, char** argv)
 	file = fopen(argv[1], "rb");
 	inROM = malloc(DCMPSIZE);
 	fread(inROM, DCMPSIZE, 1, file);
+	fclose(file);
+
+	file = fopen("ARCHIVE.bin", "rb");
+	fseek(file, 0, SEEK_END);
+	size_t archivelen = ftell(file);
+	fseek(file, 0, SEEK_SET);
+	archive = malloc(archivelen);
+	fread(archive, 1, archivelen, file);
+	fclose(file);
+
+	uint32_t archivefiles = ((uint32_t*)archive)[0];
+	entries = malloc(sizeof(index_entry) * archivefiles);
+	memcpy(entries, archive + sizeof(uint32_t), sizeof(index_entry) * archivefiles);
+
+	file = fopen("ZOOTDEC.z64", "rb");
+	vanillaROM = malloc(DCMPSIZE);
+	fread(vanillaROM, 1, DCMPSIZE, file);
 	fclose(file);
 
 	/* Find the file table and relevant info */
@@ -271,14 +297,22 @@ void* thread_func(void* arg)
 
 		if (refTab[i])
 		{
-			a->dst_size = a->src_size + 0x160;
-			a->dst = calloc(a->dst_size, sizeof(uint8_t));
-			yaz0_encode(a->src, a->src_size, a->dst, &(a->dst_size));
-			a->src_size = ((a->dst_size + 31) & -16);
-			out[i].comp = 1;
-			out[i].data = malloc(a->src_size);
-			memcpy(out[i].data, a->dst, a->src_size);
-			free(a->dst);
+			if (memcmp(inROM + t.startV, vanillaROM + t.startV, t.endV - t.startV) == 0) {
+				a->src_size = entries[i].len;
+				out[i].comp = 1;
+				out[i].data = malloc(a->src_size);
+				memcpy(out[i].data, archive + entries[i].start, a->src_size);
+			}
+			else {
+				a->dst_size = a->src_size + 0x160;
+				a->dst = calloc(a->dst_size, sizeof(uint8_t));
+				yaz0_encode(a->src, a->src_size, a->dst, &(a->dst_size));
+				a->src_size = ((a->dst_size + 31) & -16);
+				out[i].comp = 1;
+				out[i].data = malloc(a->src_size);
+				memcpy(out[i].data, a->dst, a->src_size);
+				free(a->dst);
+			}
 		}
 		else
 		{
