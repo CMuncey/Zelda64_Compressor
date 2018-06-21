@@ -53,6 +53,7 @@ typedef struct
 {
 	uint32_t start;
 	uint32_t len;
+	uint16_t dmaindex;
 }index_entry;
 
 /* Functions */
@@ -62,6 +63,7 @@ void* thread_func(void*);
 void errorCheck(int, char**);
 int numprocs();
 int grab_next();
+index_entry getindexentry(uint16_t);
 
 /* Globals */
 uint8_t* inROM;
@@ -75,6 +77,7 @@ output_t* out;
 int files;
 int next_file;
 uint32_t* fileTab;
+uint32_t archivecnt;
 index_entry *entries;
 
 int main(int argc, char** argv)
@@ -104,9 +107,9 @@ int main(int argc, char** argv)
 	fread(archive, 1, archivelen, file);
 	fclose(file);
 
-	uint32_t archivefiles = ((uint32_t*)archive)[0];
-	entries = malloc(sizeof(index_entry) * archivefiles);
-	memcpy(entries, archive + sizeof(uint32_t), sizeof(index_entry) * archivefiles);
+	uint32_t archivecnt = ((uint32_t*)archive)[0];
+	entries = malloc(sizeof(index_entry) * archivecnt);
+	memcpy(entries, archive + sizeof(uint32_t), sizeof(index_entry) * archivecnt);
 
 	file = fopen("ZOOTDEC.z64", "rb");
 	vanillaROM = malloc(DCMPSIZE);
@@ -298,10 +301,11 @@ void* thread_func(void* arg)
 		if (refTab[i])
 		{
 			if (memcmp(inROM + t.startV, vanillaROM + t.startV, t.endV - t.startV) == 0) {
-				a->src_size = entries[i].len;
+				index_entry entry = getindexentry(i);
+				a->src_size = entry.len;
 				out[i].comp = 1;
 				out[i].data = malloc(a->src_size);
-				memcpy(out[i].data, archive + entries[i].start, a->src_size);
+				memcpy(out[i].data, archive + entry.start, a->src_size);
 			}
 			else {
 				a->dst_size = a->src_size + 0x160;
@@ -407,4 +411,12 @@ int grab_next() {
 	if (file > files)
 		return -1;
 	return file;
+}
+
+index_entry getindexentry(uint16_t dmaindex) {
+	int i;
+	for (i = 0; i<archivecnt; i++) {
+		index_entry entry = entries[i];
+		if (entry.dmaindex == dmaindex) return entry;
+	}
 }

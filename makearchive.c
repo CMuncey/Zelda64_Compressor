@@ -21,6 +21,7 @@ typedef struct
 {
 	uint32_t start;
 	uint32_t len;
+	uint16_t dmaindex;
 }index_entry;
 
 uint8_t *inROM;
@@ -44,28 +45,34 @@ int main(int argc, char *argv[]) {
 	tabCount = tabSize / 16;
 	FILE *out = fopen("ARCHIVE.bin", "wb");
 	uint32_t writecount = tabCount - 3;
-	fwrite(&writecount, sizeof(uint32_t), 1, out);
+	
 	int i = 3;
-	uint32_t curpos = (sizeof(index_entry) * (tabCount - 3)) + sizeof(uint32_t);
-	index_entry *entries = malloc(sizeof(index_entry) * (tabCount - 3));
+	uint32_t idxcount = 0;
 	for (; i <= tabCount; i++) {
 		getTableEnt(&tab, fileTab, i);
-		index_entry *entry = &entries[i - 3];
-		if (tab.endP != 0) {
-			entry->len = tab.endP - tab.startP;
-		}
-		else {
-			entry->len = tab.endV - tab.startV;
-		}
+		if (tab.endP != 0)  idxcount++;
+	}
+	fwrite(&idxcount, sizeof(uint32_t), 1, out);
+	uint32_t curpos = (sizeof(index_entry) * idxcount) + sizeof(uint32_t);
+	index_entry *entries = malloc(sizeof(index_entry) * idxcount);
+	int j = 0;
+	for (i=3; i <= tabCount; i++) {
+		getTableEnt(&tab, fileTab, i);
+		if (tab.endP == 0) continue;
+		index_entry *entry = &entries[j];
+		
+		entry->len = tab.endP - tab.startP;
 
 		entry->start = curpos;
 		curpos += entry->len;
+		entry->dmaindex = i;
+		j++;
 	}
-	fwrite(entries, sizeof(index_entry), tabCount - 3, out);
+	fwrite(entries, sizeof(index_entry), idxcount, out);
 
-	for (i = 3; i <= tabCount; i++) {
-		getTableEnt(&tab, fileTab, i);
-		index_entry *entry = &entries[i - 3];
+	for (i = 0; i < idxcount; i++) {
+		index_entry *entry = &entries[i];
+		getTableEnt(&tab, fileTab, entry->dmaindex);
 		fwrite(inROM + tab.startP, 1, entry->len, out);
 	}
 
