@@ -11,10 +11,10 @@
 /* Structs */
 typedef struct
 {
-	uint32_t startV;
-	uint32_t endV;
-	uint32_t startP;
-	uint32_t endP;	
+    uint32_t startV;
+    uint32_t endV;
+    uint32_t startP;
+    uint32_t endP;  
 }
 table_t;
 
@@ -29,124 +29,124 @@ uint32_t* fileTab;
 
 int main(int argc, char** argv)
 {
-	FILE* file;
-	int32_t tabStart, tabSize, tabCount, i;
-	uint8_t* refTab;
-	table_t tab;
+    FILE* file;
+    int32_t tabStart, tabSize, tabCount, i;
+    uint8_t* refTab;
+    table_t tab;
 
-	errorCheck(argc, argv);
+    errorCheck(argc, argv);
 
-	/* Open input, read into inROM */
-	file = fopen(argv[1], "rb");
-	inROM = malloc(COMPSIZE);
-	fread(inROM, COMPSIZE, 1, file);
-	fclose(file);
+    /* Open input, read into inROM */
+    file = fopen(argv[1], "rb");
+    inROM = malloc(COMPSIZE);
+    fread(inROM, COMPSIZE, 1, file);
+    fclose(file);
 
-	/* Find file table, write to fileTab */
-	tabStart = findTable();
-	fileTab = (uint32_t*)(inROM + tabStart);
-	tab = getTableEnt(2);
-	tabSize = tab.endV - tab.startV;
-	tabCount = tabSize / 16;
+    /* Find file table, write to fileTab */
+    tabStart = findTable();
+    fileTab = (uint32_t*)(inROM + tabStart);
+    tab = getTableEnt(2);
+    tabSize = tab.endV - tab.startV;
+    tabCount = tabSize / 16;
 
-	/* Fill refTab with 1 for compressed, 0 otherwise */
-	refTab = malloc(tabCount);
-	for(i = 0; i < tabCount; i++)
-	{
-		tab = getTableEnt(i);
-		refTab[i] = (tab.endP == 0) ? '0' : '1';
-	}
+    /* Fill refTab with 1 for compressed, 0 otherwise */
+    refTab = malloc(tabCount);
+    for(i = 0; i < tabCount; i++)
+    {
+        tab = getTableEnt(i);
+        refTab[i] = (tab.endP == 0) ? '0' : '1';
+    }
 
-	/* Write fileTab to table.bin */	
-	file = fopen("table.txt", "w");
-	fwrite(refTab, tabCount, 1, file);
-	fclose(file);
-	free(inROM);
-	free(refTab);
-	
-	return(0);
+    /* Write fileTab to table.bin */    
+    file = fopen("table.txt", "w");
+    fwrite(refTab, tabCount, 1, file);
+    fclose(file);
+    free(inROM);
+    free(refTab);
+    
+    return(0);
 }
 
 uint32_t findTable()
 {
-	uint32_t i, temp;
-	uint32_t* tempROM;
+    uint32_t i, temp;
+    uint32_t* tempROM;
 
-	i = 0;
-	tempROM = (uint32_t*)inROM;
+    i = 0;
+    tempROM = (uint32_t*)inROM;
 
-	while(i+4 < UINTSIZE)
-	{
-		/* This marks the begining of the filetable */
-		byteSwap(temp, tempROM[i]);
-		if(temp == 0x7A656C64)
-		{
-			byteSwap(temp, tempROM[i+1]);
-			if(temp == 0x61407372)
-			{
-				byteSwap(temp, tempROM[i+2]);
-				if((temp & 0xFF000000) == 0x64000000)
-				{
-					/* Find first entry in file table */
-					i += 8;
-					byteSwap(temp, tempROM[i]);
-					while(temp != 0x00001060)
-					{
-						i += 4;
-						byteSwap(temp, tempROM[i]);
-					}
-					return((i-4) * sizeof(uint32_t));
-				}
-			}
-		}
+    while(i+4 < UINTSIZE)
+    {
+        /* This marks the begining of the filetable */
+        byteSwap(temp, tempROM[i]);
+        if(temp == 0x7A656C64)
+        {
+            byteSwap(temp, tempROM[i+1]);
+            if(temp == 0x61407372)
+            {
+                byteSwap(temp, tempROM[i+2]);
+                if((temp & 0xFF000000) == 0x64000000)
+                {
+                    /* Find first entry in file table */
+                    i += 8;
+                    byteSwap(temp, tempROM[i]);
+                    while(temp != 0x00001060)
+                    {
+                        i += 4;
+                        byteSwap(temp, tempROM[i]);
+                    }
+                    return((i-4) * sizeof(uint32_t));
+                }
+            }
+        }
 
-		i += 4;
-	}
+        i += 4;
+    }
 
-	fprintf(stderr, "Error: Couldn't find file table\n");
-	exit(1);
+    fprintf(stderr, "Error: Couldn't find file table\n");
+    exit(1);
 }
 
 table_t getTableEnt(uint32_t i)
 {
-	table_t tab;
+    table_t tab;
 
-	byteSwap(tab.startV, fileTab[i*4]);
-	byteSwap(tab.endV,   fileTab[(i*4)+1]);
-	byteSwap(tab.startP, fileTab[(i*4)+2]);
-	byteSwap(tab.endP,   fileTab[(i*4)+3]);
+    byteSwap(tab.startV, fileTab[i*4]);
+    byteSwap(tab.endV,   fileTab[(i*4)+1]);
+    byteSwap(tab.startP, fileTab[(i*4)+2]);
+    byteSwap(tab.endP,   fileTab[(i*4)+3]);
 
-	return(tab);
+    return(tab);
 }
 
 void errorCheck(int argc, char** argv)
 {
-	int i;
-	FILE* file;
+    int i;
+    FILE* file;
 
-	/* Check for arguments */
-	if(argc != 2)
-	{
-		fprintf(stderr, "Usage: TabExt [Input ROM]\n");
-		exit(1);
-	}
+    /* Check for arguments */
+    if(argc != 2)
+    {
+        fprintf(stderr, "Usage: TabExt [Input ROM]\n");
+        exit(1);
+    }
 
-	/* Check that input ROM exists */
-	file = fopen(argv[1], "rb");
-	if(file == NULL)
-	{
-		perror(argv[1]);
-		fclose(file);
-		exit(1);
-	}
+    /* Check that input ROM exists */
+    file = fopen(argv[1], "rb");
+    if(file == NULL)
+    {
+        perror(argv[1]);
+        fclose(file);
+        exit(1);
+    }
 
-	/* Check that input ROM is correct size */
-	fseek(file, 0, SEEK_END);
-	i = ftell(file);
-	fclose(file);
-	if(i != COMPSIZE)
-	{
-		fprintf(stderr, "Warning: Invalid input ROM size\n");
-		exit(1);
-	}
+    /* Check that input ROM is correct size */
+    fseek(file, 0, SEEK_END);
+    i = ftell(file);
+    fclose(file);
+    if(i != COMPSIZE)
+    {
+        fprintf(stderr, "Warning: Invalid input ROM size\n");
+        exit(1);
+    }
 }
