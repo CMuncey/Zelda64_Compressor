@@ -158,9 +158,9 @@ int main(int argc, char** argv)
     arcCount = 0;
 
     /* Get CPU core count */
-    numCores = getNumCores() - 1;
+    numCores = getNumCores();
     threads = malloc(sizeof(pthread_t) * numCores);
-    printf("Detected %d cores\n", (numCores + 1));
+    printf("Detected %d cores.\n", (numCores));
     fflush(stdout);
 
     /* Create all the threads */
@@ -281,7 +281,7 @@ uint32_t findTable(uint8_t* argROM)
         }
     }
 
-    fprintf(stderr, "Error: Couldn't find file table\n");
+    fprintf(stderr, "Error: Couldn't find file table!\n");
     exit(1);
 }
 
@@ -312,14 +312,14 @@ void* thread_func(void* null)
         a->src = inROM + t.startV;
 
         /* If needed, compress and fix size */
-        /* Otherwise, just copy src into outROM */
+        /* Otherwise, just copy src into out */
         if(refTab[i])
         {
             pthread_mutex_lock(&countlock);
             nextArchive = arcCount++;
             pthread_mutex_unlock(&countlock);
 
-            /* If the uncompressed version is the same as vanilla, just copy/paste it */
+            /* If uncompressed is the same as archive, just copy/paste the compressed */
             /* Otherwise, compress it manually */
             if((archive != NULL) && (memcmp(a->src, archive->ref[nextArchive], archive->ref_size[nextArchive]) == 0))
             {
@@ -480,7 +480,7 @@ int32_t getNext()
     if((file % 150) == 0)
     {
         temp = numFiles - file;
-        printf("%#4d files remaining\n", (temp + 2));
+        printf("%#4d files remaining...\n", (temp + 2));
         fflush(stdout);
     }
 
@@ -518,7 +518,7 @@ void errorCheck(int argc, char** argv)
     fclose(file);
     if(i != DCMPSIZE)
     {
-        fprintf(stderr, "Warning: Invalid input ROM size\n");
+        fprintf(stderr, "Error: Invalid input ROM size!\n");
         exit(1);
     }
 
@@ -535,7 +535,7 @@ void errorCheck(int argc, char** argv)
     i = strlen(argv[1]) + 5;
     name = malloc(i);
     strcpy(name, argv[1]);
-    for(i; i > 0; i--)
+    for(i; i >= 0; i--)
     {
         if(name[i] == '.')
         {
