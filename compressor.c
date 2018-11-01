@@ -335,7 +335,6 @@ void* thread_func(void* null)
                 a->dst_size = a->src_size + 0x160;
                 a->dst = calloc(a->dst_size, sizeof(uint8_t));
                 yaz0_encode(a->src, a->src_size, a->dst, &(a->dst_size));
-                a->src_size = ((a->dst_size + 31) & -16);
                 out[i].comp = 1;
                 out[i].data = malloc(a->src_size);
                 memcpy(out[i].data, a->dst, a->src_size);
