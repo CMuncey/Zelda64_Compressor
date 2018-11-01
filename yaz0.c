@@ -1,204 +1,198 @@
-#include <stdint.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
-#include "tables.h"
-#include "readwrite.h"
 
-typedef uint8_t  u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
+#define bSwap_32(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
+#define WHITE "\033[0m"
+#define RED   "\033[1;31m"
+#define GREEN "\033[1;32m"
+#define BLUE  "\033[1;34m"
 
-/* internal declarations */
-u32 simpleEnc(u8* src, int size, int pos, u32 *pMatchPos);
-u32 nintendoEnc(u8* src, int size, int pos, u32 *pMatchPos, u32*, u32*, int*);
-int yaz0_encode_internal(u8* src, int srcSize, u8 * Data);
-void yaz0_decode_internal (u8 *src, u8 *dst, int uncompressedSize);
+uint32_t RabinKarp(uint8_t*, int, int, uint32_t*);
+uint32_t findBest(uint8_t*, int, int, uint32_t*, uint32_t*, uint32_t*, uint8_t*);
+int      yaz0_internal(uint8_t*, int, uint8_t*);
+void     yaz0_encode(uint8_t*, int, uint8_t*, int*);
 
-int
-yaz0_get_size (u8 * src)
+uint32_t RabinKarp(uint8_t* src, int srcSize, int srcPos, uint32_t* matchPos)
 {
-    return U32(src + 0x4);
-}
+    int startPos, smp, i;
+    uint32_t hash, curHash, curSize;
+    uint32_t bestSize, bestPos;
 
-u32 toDWORD(u32 d)
-{
-  u8 w1 = d & 0xFF;
-  u8 w2 = (d >> 8) & 0xFF;
-  u8 w3 = (d >> 16) & 0xFF;
-  u8 w4 = d >> 24;
-  return (w1 << 24) | (w2 << 16) | (w3 << 8) | w4;
-}
+    smp = srcSize - srcPos;
+    startPos = srcPos - 0x1000;
+    bestPos = bestSize = 0;
 
-// simple and straight encoding scheme for Yaz0
-u32
-simpleEnc(u8* src, int size, int pos, u32 *pMatchPos)
-{
-  int startPos = pos - 0x1000, j, i;
-  int smp = size - pos;
-  u32 numBytes = 1;
-  u32 matchPos = 0;
+    /* If available size is too small, return */
+    if(smp < 3)
+        return(0);
 
-  if (startPos < 0)
-    startPos = 0;
+    /* If available size is too big, reduce it */
+    if(smp > 0x111)
+        smp = 0x111;
 
-  if(smp > 0x111)
-    smp = 0x111;
+    /* If start position is negative, make it 0 */
+    if(startPos < 0)
+        startPos = 0;
 
-  for (i = startPos; i < pos; i++)
-  {
-    for (j = 0; j < smp; j++)
+    /* Generate "hash" by converting to an int */
+    bSwap_32(hash, *(int*)(src + srcPos));
+    hash = hash >> 8;
+    bSwap_32(curHash, *(int*)(src + startPos));
+    curHash = curHash >> 8;
+
+    /* Search through data */
+    for(i = startPos; i < srcPos; i++)
     {
-      if (src[i+j] != src[j+pos])
-        break;
+        /* If 3 bytes match, check for more */
+        if(curHash == hash)
+        {
+            for(curSize = 3; curSize < smp; curSize++)
+                if(src[i + curSize] != src[srcPos + curSize])
+                    break;
+
+            /* Uodate best if needed */
+            if(curSize > bestSize)
+            {
+                bestSize = curSize;
+                bestPos = i;
+                if(bestSize == 0x111)
+                    break;
+            }
+        }
+
+        /* Scoot over 1 byte */
+        curHash = (curHash << 8 | src[i + 3]) & 0x00FFFFFF;
     }
-    if (j > numBytes)
-    {
-      numBytes = j;
-      matchPos = i;
-    }
-  }
-  *pMatchPos = matchPos;
-  if (numBytes == 2)
-    numBytes = 1;
-  return numBytes;
-}
-
-// a lookahead encoding scheme for ngc Yaz0
-u32
-nintendoEnc(u8* src, int size, int pos, u32 *pMatchPos, u32* numBytes1, u32* matchPos, int* prevFlag)
-{
-  u32 numBytes = 1;
-
-  // if prevFlag is set, it means that the previous position was determined by look-ahead try.
-  // so just use it. this is not the best optimization, but nintendo's choice for speed.
-  if (*prevFlag == 1) {
-    *pMatchPos = *matchPos;
-    *prevFlag = 0;
-    return *numBytes1;
-  }
-  *prevFlag = 0;
-  numBytes = simpleEnc(src, size, pos, matchPos);
-  *pMatchPos = *matchPos;
-
-  // if this position is RLE encoded, then compare to copying 1 byte and next position(pos+1) encoding
-  if (numBytes >= 3) {
-    *numBytes1 = simpleEnc(src, size, pos+1, matchPos);
-    // if the next position encoding is +2 longer than current position, choose it.
-    // this does not guarantee the best optimization, but fairly good optimization with speed.
-    if (*numBytes1 >= numBytes+2) {
-      numBytes = 1;
-      *prevFlag = 1;
-    }
-  }
-  return numBytes;
-}
-
-int
-yaz0_encode_internal(u8* src, int srcSize, u8 * Data)
-{
-  u8 dst[24];    // 8 codes * 3 bytes maximum
-  int dstSize = 0;
-  int i;
-  int pos=0;
-  int srcPos=0, dstPos=0;
-
-  u32 numBytes1, matchPos2;
-  int prevFlag = 0;
-  
-  u32 validBitCount = 0; //number of valid bits left in "code" byte
-  u8 currCodeByte = 0;
-  while(srcPos < srcSize)
-  {
-    u32 numBytes;
-    u32 matchPos;
-    u32 srcPosBak;
-
-    numBytes = nintendoEnc(src, srcSize, srcPos, &matchPos, &numBytes1, &matchPos2, &prevFlag);
-    if (numBytes < 3)
-    {
-      //straight copy
-      dst[dstPos] = src[srcPos];
-      dstPos++;
-      srcPos++;
-      //set flag for straight copy
-      currCodeByte |= (0x80 >> validBitCount);
-    }
-    else 
-    {
-      //RLE part
-      u32 dist = srcPos - matchPos - 1; 
-      u8 byte1, byte2, byte3;
-
-      if (numBytes >= 0x12)  // 3 byte encoding
-      {
-        byte1 = 0 | (dist >> 8);
-        byte2 = dist & 0xff;
-        dst[dstPos++] = byte1;
-        dst[dstPos++] = byte2;
-        // maximum runlength for 3 byte encoding
-        if (numBytes > 0xff+0x12)
-          numBytes = 0xff+0x12;
-        byte3 = numBytes - 0x12;
-        dst[dstPos++] = byte3;
-      } 
-      else  // 2 byte encoding
-      {
-        byte1 = ((numBytes - 2) << 4) | (dist >> 8);
-        byte2 = dist & 0xff;
-        dst[dstPos++] = byte1;
-        dst[dstPos++] = byte2;
-      }
-      srcPos += numBytes;
-    }
-    validBitCount++;
-    //write eight codes
-    if(validBitCount == 8)
-    {
-      Data[pos] = currCodeByte;
-      pos++;
-      for (i=0;i</*=*/dstPos;pos++,i++)
-        Data[pos] = dst[i];
-      dstSize += dstPos+1;
-
-      srcPosBak = srcPos;
-      currCodeByte = 0;
-      validBitCount = 0;
-      dstPos = 0;
-    }
-  }
-  if(validBitCount > 0)
-  {
-    Data[pos] = currCodeByte;
-    pos++;
-    for (i=0;i</*=*/dstPos;pos++,i++)
-      Data[pos] = dst[i];
-    dstSize += dstPos+1;
-
-    currCodeByte = 0;
-    validBitCount = 0;
-    dstPos = 0;
-  }
     
-  return dstSize;
+    /* Set match position, return the size of the match */
+    *matchPos = bestPos;
+    return(bestSize);
 }
 
-void
-yaz0_encode(u8 * src, int src_size, u8 *dst, int *dst_size )
+uint32_t findBest(uint8_t* src, int srcSize, int srcPos, uint32_t* matchPos, uint32_t* pMatch, uint32_t* pSize, uint8_t* pFlag)
 {
-  //check for minimum size
-  if(*dst_size < src_size + 0x20)
-  {
-      perror("yaz0_encode: Bad size\n");
-      *dst_size = -1;
-      return;
-  }
-  
-  // write 4 bytes yaz0 header
-  memcpy(dst, "Yaz0", 4);
-  
-  // write 4 bytes uncompressed size
-  W32(dst + 4, src_size);
-  
-  //encode
-  *dst_size = yaz0_encode_internal(src, src_size, dst + 16);
+    int rv;
+
+    /* Check to see if this location was found by a look-ahead */
+    if(*pFlag == 1)
+    {
+        *pFlag = 0;
+        return(*pSize);
+    }
+
+    /* Find best match */
+    *pFlag = 0;
+    rv = RabinKarp(src, srcSize, srcPos, matchPos);
+
+    /* Look-ahead */
+    if(rv >= 3)
+    {
+        /* Find best match if current one were to be a 1 byte copy */
+        *pSize = RabinKarp(src, srcSize, srcPos+1, pMatch);
+        if(*pSize >= rv+2)
+        {
+            rv = *pFlag = 1;
+            *matchPos = *pMatch;
+        }
+    }
+
+    return(rv);
+}
+
+int yaz0_internal(uint8_t* src, int srcSize, uint8_t* dst)
+{
+    int dstPos, srcPos, codeBytePos;
+    uint32_t numBytes, matchPos, dist, pMatch, pSize;
+    uint8_t codeByte, bitmask, pFlag;
+
+    srcPos = codeBytePos = 0;
+    dstPos = codeBytePos + 1;
+    bitmask = 0x80;
+    codeByte = pFlag = 0;
+
+    /* Go through all of src */
+    while(srcPos < srcSize)
+    {
+        /* Try to find matching bytes for compressing */
+        numBytes = findBest(src, srcSize, srcPos, &matchPos, &pMatch, &pSize, &pFlag);
+
+        /* Single byte copy */
+        if(numBytes < 3)
+        {
+            dst[dstPos++] = src[srcPos++];
+            codeByte |= bitmask; 
+        }
+
+        /* Three byte encoding */
+        else if (numBytes > 0x11)
+        {
+            dist = srcPos - matchPos - 1;
+
+            /* Copy over 0R RR */
+            dst[dstPos++] = dist >> 8;
+            dst[dstPos++] = dist & 0xFF;
+
+            /* Reduce N if needed, copy over NN */
+            if(numBytes > 0x111)
+                numBytes = 0x111;
+            dst[dstPos++] = (numBytes - 0x12) & 0xFF;
+
+            srcPos += numBytes;
+        }
+
+        /* Two byte encoding */
+        else
+        {
+            dist = srcPos - matchPos - 1;
+            
+            /* Copy over NR RR */
+            dst[dstPos++] = ((numBytes - 2) << 4) | (dist >> 8);
+            dst[dstPos++] = dist & 0xFF;
+            
+            srcPos += numBytes;
+        }
+
+        /* Move bitmask to next byte */
+        bitmask = bitmask >> 1;
+
+        /* If all 8 bytes were used, write and move to the next one */
+        if(bitmask == 0)
+        {
+            dst[codeBytePos] = codeByte;
+            codeBytePos = dstPos++;
+            codeByte = 0;
+            bitmask = 0x80;
+        }
+    }
+
+    /* Copy over last byte if it hasn't already */
+    if(bitmask != 0)
+        dst[codeBytePos] = codeByte;
+
+    /* Return size of dst */
+    return(dstPos);
+}
+
+void yaz0_encode(uint8_t* src, int srcSize, uint8_t* dst, int* dstSize)
+{
+    int temp;
+    
+    /* Check for minimum size */
+    if(*dstSize < srcSize + 0x20)
+    {
+        fprintf(stderr, "yaz0_encode: Bad dstSize\n");
+        *dstSize = -1;
+        return;
+    }
+
+    /* Write Yaz0 header */
+    bSwap_32(temp, srcSize);
+    memcpy(dst, "Yaz0", 4);
+    memcpy(dst + 4, &temp, 4);
+
+    /* Encode, adjust dstSize */
+    temp = yaz0_internal(src, srcSize, dst + 16);
+    *dstSize = (temp + 31) & -16;
+    return;
 }
