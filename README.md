@@ -6,7 +6,7 @@ This is a compressor for The Legend of Zelda: Ocarina of Time. It takes a decomp
 
 This program will probably make your CPU fans run very loud, as it pins every core in your processor to 100% for a while. This is done to make it much faster than other compressors, at the cost of a bit of noise.
 
-With version 3.0, the compressor now makes a file called `ARCHIVE.bin`. This file is used to speed up subsequent compressoions by allowing the compressor to copy over similar files instead of compressing them again. This won't be too useful if you're only compressing vanilla ROMS (Well, it will compress in about a second, but I'm not sure why you would be compressing the same ROM over and over), but it should prove very useful if you're making ROM hacks or using the OoT Item Randomiser, because if you're only changing a few files, it won't compress the entire ROM again, and will instead only compress what it needs to.
+With version 3.0, the compressor now makes a file called `ARCHIVE.bin`. This file is used to speed up subsequent compressoions by allowing the compressor to copy over similar files instead of compressing them again. This won't be too useful if you're only compressing vanilla ROMS (Well, it will compress in a few milliseconds, but I'm not sure why you would be compressing the same ROM over and over), but it should prove very useful if you're making ROM hacks or using the OoT Item Randomiser, because if you're only changing a few files, it won't compress the entire ROM again, and will instead only compress what it needs to.
 
 \*Results may vary
 
