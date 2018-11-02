@@ -27,8 +27,7 @@ typedef struct
     uint32_t num;
     uint8_t* src;
     uint8_t* dst;
-    int src_size;
-    int dst_size;
+    int  srcSize;
     table_t  tab;
 }
 args_t;
@@ -45,8 +44,8 @@ output_t;
 typedef struct
 {
     uint32_t fileCount;
-    uint32_t* ref_size;
-    uint32_t* src_size;
+    uint32_t*  refSize;
+    uint32_t*  srcSize;
     uint8_t**      ref;
     uint8_t**      src;
 }
@@ -54,12 +53,12 @@ archive_t;
 
 /* Functions */
 uint32_t findTable(uint8_t*);
-void getTableEnt(table_t*, uint32_t*, uint32_t);
-void* thread_func(void*);
-void errorCheck(int, char**);
-void makeArchive(char*, char*);
-int32_t getNumCores();
-int32_t getNext();
+void     getTableEnt(table_t*, uint32_t*, uint32_t);
+void*    threadFunc(void*);
+void     errorCheck(int, char**);
+void     makeArchive(char*, char*);
+int32_t  getNumCores();
+int32_t  getNext();
 
 /* Globals */
 uint8_t* inROM;
@@ -77,7 +76,7 @@ int main(int argc, char** argv)
 {
     FILE* file;
     int32_t tabStart, tabSize, tabCount;
-    volatile int32_t prev, prev_comp;
+    volatile int32_t prev, prevComp;
     int32_t i, size, numCores, tempSize;
     pthread_t* threads;
     table_t tab;
@@ -103,8 +102,8 @@ int main(int argc, char** argv)
         fread(&(archive->fileCount), sizeof(uint32_t), 1, file);
 
         /* Allocate space for files and sizes */
-        archive->ref_size = malloc(sizeof(uint32_t) * archive->fileCount);
-        archive->src_size = malloc(sizeof(uint32_t) * archive->fileCount);
+        archive->refSize = malloc(sizeof(uint32_t) * archive->fileCount);
+        archive->srcSize = malloc(sizeof(uint32_t) * archive->fileCount);
         archive->ref = malloc(sizeof(uint8_t*) * archive->fileCount);
         archive->src = malloc(sizeof(uint8_t*) * archive->fileCount);
 
@@ -114,13 +113,13 @@ int main(int argc, char** argv)
             /* Decompressed "Reference" file */
             fread(&tempSize, sizeof(uint32_t), 1, file);
             archive->ref[i] = malloc(tempSize);
-            archive->ref_size[i] = tempSize;
+            archive->refSize[i] = tempSize;
             fread(archive->ref[i], 1, tempSize, file);
 
             /* Compressed "Source" file */
             fread(&tempSize, sizeof(uint32_t), 1, file);
             archive->src[i] = malloc(tempSize);
-            archive->src_size[i] = tempSize;
+            archive->srcSize[i] = tempSize;
             fread(archive->src[i], 1, tempSize, file);
         }
         fclose(file);
@@ -165,7 +164,7 @@ int main(int argc, char** argv)
 
     /* Create all the threads */
     for(i = 0; i < numCores; i++)
-        pthread_create(&threads[i], NULL, thread_func, NULL);
+        pthread_create(&threads[i], NULL, threadFunc, NULL);
 
     /* Wait for all of the threads to finish */
     for(i = 0; i < numCores; i++)
@@ -177,7 +176,7 @@ int main(int argc, char** argv)
     outROM = calloc(COMPSIZE, sizeof(uint8_t));
     memcpy(outROM, inROM, tabStart + tabSize);
     prev = tabStart + tabSize;
-    prev_comp = refTab[2];
+    prevComp = refTab[2];
     tabStart += 0x20;
 
     /* Free some stuff */
@@ -187,8 +186,8 @@ int main(int argc, char** argv)
     {
         free(archive->ref);
         free(archive->src);
-        free(archive->ref_size);
-        free(archive->src_size);
+        free(archive->refSize);
+        free(archive->srcSize);
         free(archive);
     }
     free(threads);
@@ -219,7 +218,7 @@ int main(int argc, char** argv)
 
         /* Setup for next iteration */
         prev += size;
-        prev_comp = out[i].comp;
+        prevComp = out[i].comp;
 
         free(out[i].data);
     }
@@ -293,11 +292,11 @@ void getTableEnt(table_t* tab, uint32_t* files, uint32_t i)
     byteSwap(tab->endP,   files[(i*4)+3]);
 }
 
-void* thread_func(void* null)
+void* threadFunc(void* null)
 {
     args_t* a;
     table_t t;
-    int32_t next, i, nextArchive;
+    int32_t next, i, nextArchive, size;
 
     while((next = getNext()) != -1)
     {
@@ -308,7 +307,7 @@ void* thread_func(void* null)
         i = a->num;
 
         /* Setup the src*/
-        a->src_size = t.endV - t.startV;
+        a->srcSize = t.endV - t.startV;
         a->src = inROM + t.startV;
 
         /* If needed, compress and fix size */
@@ -321,24 +320,23 @@ void* thread_func(void* null)
 
             /* If uncompressed is the same as archive, just copy/paste the compressed */
             /* Otherwise, compress it manually */
-            if((archive != NULL) && (memcmp(a->src, archive->ref[nextArchive], archive->ref_size[nextArchive]) == 0))
+            if((archive != NULL) && (memcmp(a->src, archive->ref[nextArchive], archive->refSize[nextArchive]) == 0))
             {
                 out[i].comp = 1;
-                a->src_size = archive->src_size[nextArchive];
-                out[i].data = malloc(a->src_size);
-                memcpy(out[i].data, archive->src[nextArchive], a->src_size);
+                size = archive->srcSize[nextArchive];
+                out[i].data = malloc(size);
+                memcpy(out[i].data, archive->src[nextArchive], size);
                 free(archive->ref[nextArchive]);
                 free(archive->src[nextArchive]);
             }
             else
             {
-                a->dst_size = a->src_size + 0x160;
-                a->dst = calloc(a->dst_size, sizeof(uint8_t));
-                yaz0_encode(a->src, a->src_size, a->dst, &(a->dst_size));
-                a->src_size = ((a->dst_size + 31) & -16);
+                size = a->srcSize + 0x160;
+                a->dst = calloc(size, sizeof(uint8_t));
+                yaz0_encode(a->src, a->srcSize, a->dst, &(size));
                 out[i].comp = 1;
-                out[i].data = malloc(a->src_size);
-                memcpy(out[i].data, a->dst, a->src_size);
+                out[i].data = malloc(size);
+                memcpy(out[i].data, a->dst, size);
                 free(a->dst);
                 if(archive != NULL)
                 {
@@ -350,13 +348,14 @@ void* thread_func(void* null)
         else
         {
             out[i].comp = 0;
-            out[i].data = malloc(a->src_size);
-            memcpy(out[i].data, a->src, a->src_size);
+            size = a->srcSize;
+            out[i].data = malloc(size);
+            memcpy(out[i].data, a->src, size);
         }
 
         /* Set up the table entry and size */
         out[i].table = t;
-        out[i].size = a->src_size;
+        out[i].size = size;
         free(a);
     }
 
