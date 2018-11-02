@@ -3,10 +3,6 @@
 #include <string.h>
 
 #define bSwap_32(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
-#define WHITE "\033[0m"
-#define RED   "\033[1;31m"
-#define GREEN "\033[1;32m"
-#define BLUE  "\033[1;34m"
 
 uint32_t RabinKarp(uint8_t*, int, int, uint32_t*);
 uint32_t findBest(uint8_t*, int, int, uint32_t*, uint32_t*, uint32_t*, uint8_t*);
