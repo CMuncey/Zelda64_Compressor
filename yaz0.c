@@ -156,7 +156,9 @@ int yaz0_internal(uint8_t* src, int srcSize, uint8_t* dst)
         if(bitmask == 0)
         {
             dst[codeBytePos] = codeByte;
-            codeBytePos = dstPos++;
+            codeBytePos = dstPos;
+            if(srcPos < srcSize)
+                dstPos++;
             codeByte = 0;
             bitmask = 0x80;
         }
@@ -173,14 +175,6 @@ int yaz0_internal(uint8_t* src, int srcSize, uint8_t* dst)
 void yaz0_encode(uint8_t* src, int srcSize, uint8_t* dst, int* dstSize)
 {
     int temp;
-    
-    /* Check for minimum size */
-    if(*dstSize < srcSize + 0x20)
-    {
-        fprintf(stderr, "yaz0_encode: Bad dstSize\n");
-        *dstSize = -1;
-        return;
-    }
 
     /* Write Yaz0 header */
     bSwap_32(temp, srcSize);
