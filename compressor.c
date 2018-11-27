@@ -14,7 +14,6 @@
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
-#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
 
 /* Structs */
 typedef struct
@@ -213,10 +212,10 @@ int main(int argc, char** argv)
 				tab.endP = tab.startP + size;
 
 			memcpy(outROM + tab.startP, out[i].data, size);
-			byteSwap(tab.startV, tab.startV);
-			byteSwap(tab.endV, tab.endV);
-			byteSwap(tab.startP, tab.startP);
-			byteSwap(tab.endP, tab.endP);
+			tab.startV = byteSwap_32(tab.startV);
+			tab.endV = byteSwap_32(tab.endV);
+			tab.startP = byteSwap_32(tab.startP);
+			tab.endP = byteSwap_32(tab.endP);
 			memcpy(outROM + tabStart, &tab, sizeof(table_t));
 		}
 
@@ -260,22 +259,22 @@ uint32_t findTable(uint8_t* argROM)
 	for(i = 0; i+4 < UINTSIZE; i += 4)
 	{
 		/* This marks the begining of the filetable */
-		byteSwap(temp, outROM[i]);
+		temp = byteSwap_32(outROM[i]);
 		if(temp == 0x7A656C64)
 		{
-			byteSwap(temp, outROM[i+1]);
+			temp = byteSwap_32(outROM[i+1]);
 			if(temp == 0x61407372)
 			{
-				byteSwap(temp, outROM[i+2]);
+				temp = byteSwap_32(outROM[i+2]);
 				if((temp & 0xFF000000) == 0x64000000)
 				{
 					/* Find first entry in file table */
 					i += 8;
-					byteSwap(temp, outROM[i]);
+					temp = byteSwap_32(outROM[i]);
 					while(temp != 0x00001060)
 					{
 						i += 4;
-						byteSwap(temp, outROM[i]);
+						temp = byteSwap_32(outROM[i]);
 					}
 					return((i-4) * sizeof(uint32_t));
 				}
@@ -289,10 +288,10 @@ uint32_t findTable(uint8_t* argROM)
 
 void getTableEnt(table_t* tab, uint32_t* files, uint32_t i)
 {
-	byteSwap(tab->startV, files[i*4]);
-	byteSwap(tab->endV,   files[(i*4)+1]);
-	byteSwap(tab->startP, files[(i*4)+2]);
-	byteSwap(tab->endP,   files[(i*4)+3]);
+	tab->startV = byteSwap_32(files[i*4]);
+	tab->endV   = byteSwap_32(files[(i*4)+1]);
+	tab->startP = byteSwap_32(files[(i*4)+2]);
+	tab->endP   = byteSwap_32(files[(i*4)+3]);
 }
 
 void* threadFunc(void* null)

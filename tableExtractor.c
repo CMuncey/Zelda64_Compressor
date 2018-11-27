@@ -6,7 +6,6 @@
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
-#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
 
 /* Structs */
 typedef struct
@@ -78,22 +77,22 @@ uint32_t findTable()
     while(i+4 < UINTSIZE)
     {
         /* This marks the begining of the filetable */
-        byteSwap(temp, tempROM[i]);
+        temp = byteSwap_32(tempROM[i]);
         if(temp == 0x7A656C64)
         {
-            byteSwap(temp, tempROM[i+1]);
+            temp = byteSwap_32(tempROM[i+1]);
             if(temp == 0x61407372)
             {
-                byteSwap(temp, tempROM[i+2]);
+                temp = byteSwap_32(tempROM[i+2]);
                 if((temp & 0xFF000000) == 0x64000000)
                 {
                     /* Find first entry in file table */
                     i += 8;
-                    byteSwap(temp, tempROM[i]);
+                    temp = byteSwap_32(tempROM[i]);
                     while(temp != 0x00001060)
                     {
                         i += 4;
-                        byteSwap(temp, tempROM[i]);
+                        temp = byteSwap_32(tempROM[i]);
                     }
                     return((i-4) * sizeof(uint32_t));
                 }
@@ -111,10 +110,10 @@ table_t getTableEnt(uint32_t i)
 {
     table_t tab;
 
-    byteSwap(tab.startV, fileTab[i*4]);
-    byteSwap(tab.endV,   fileTab[(i*4)+1]);
-    byteSwap(tab.startP, fileTab[(i*4)+2]);
-    byteSwap(tab.endP,   fileTab[(i*4)+3]);
+    tab.startV = byteSwap_32(fileTab[i*4]);
+    tab.endV   = byteSwap_32(fileTab[(i*4)+1]);
+    tab.startP = byteSwap_32(fileTab[(i*4)+2]);
+    tab.endP   = byteSwap_32(fileTab[(i*4)+3]);
 
     return(tab);
 }
