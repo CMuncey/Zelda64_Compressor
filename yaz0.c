@@ -2,8 +2,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#define bSwap_32(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
-
 uint32_t RabinKarp(uint8_t*, int, int, uint32_t*);
 uint32_t findBest(uint8_t*, int, int, uint32_t*, uint32_t*, uint32_t*, uint8_t*);
 int      yaz0_internal(uint8_t*, int, uint8_t*);
@@ -32,9 +30,9 @@ uint32_t RabinKarp(uint8_t* src, int srcSize, int srcPos, uint32_t* matchPos)
         startPos = 0;
 
     /* Generate "hash" by converting to an int */
-    bSwap_32(hash, *(int*)(src + srcPos));
+    hash = bSwap_32(*(int*)(src + srcPos));
     hash = hash >> 8;
-    bSwap_32(curHash, *(int*)(src + startPos));
+    curHash = bSwap_32(*(int*)(src + startPos));
     curHash = curHash >> 8;
 
     /* Search through data */
@@ -177,7 +175,7 @@ void yaz0_encode(uint8_t* src, int srcSize, uint8_t* dst, int* dstSize)
     int temp;
 
     /* Write Yaz0 header */
-    bSwap_32(temp, srcSize);
+    temp = bSwap_32(srcSize);
     memcpy(dst, "Yaz0", 4);
     memcpy(dst + 4, &temp, 4);
 
