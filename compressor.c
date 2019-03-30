@@ -61,10 +61,10 @@ int32_t  getNumCores();
 int32_t  getNext();
 
 /* Globals */
+char* name;
 uint8_t* inROM;
 uint8_t* outROM;
 uint8_t* refTab;
-char* name;
 pthread_mutex_t filelock;
 pthread_mutex_t countlock;
 int32_t numFiles, nextFile, arcCount;
@@ -139,7 +139,7 @@ int main(int argc, char** argv)
     tabCount = tabSize / 16;
 
     /* Read in compression reference */
-    file = fopen("table.txt", "r");
+    file = fopen("dmaTable.dat", "r");
     fseek(file, 0, SEEK_END);
     size = ftell(file);
     fseek(file, 0, SEEK_SET);
@@ -249,38 +249,19 @@ int main(int argc, char** argv)
 
 uint32_t findTable(uint8_t* argROM)
 {
-    uint32_t i, temp;
+    uint32_t i;
     uint32_t* tempROM;
 
     tempROM = (uint32_t*)argROM;
 
-    for(i = 0; i+4 < UINTSIZE; i += 4)
+    for(i = 1048; i+4 < UINTSIZE; i += 4)
     {
-        /* This marks the begining of the filetable */
-        byteSwap(temp, tempROM[i]);
-        if(temp == 0x7A656C64)
-        {
-            byteSwap(temp, tempROM[i+1]);
-            if(temp == 0x61407372)
-            {
-                byteSwap(temp, tempROM[i+2]);
-                if((temp & 0xFF000000) == 0x64000000)
-                {
-                    /* Find first entry in file table */
-                    i += 8;
-                    byteSwap(temp, tempROM[i]);
-                    while(temp != 0x00001060)
-                    {
-                        i += 4;
-                        byteSwap(temp, tempROM[i]);
-                    }
-                    return((i-4) * sizeof(uint32_t));
-                }
-            }
-        }
+        if(tempROM[i] == 0x00000000)
+            if(tempROM[i+1] == 0x60100000)
+                return(i * 4);
     }
 
-    fprintf(stderr, "Error: Couldn't find file table!\n");
+    fprintf(stderr, "Error: Couldn't find dma table!\n");
     exit(1);
 }
 
@@ -496,9 +477,9 @@ void errorCheck(int argc, char** argv)
     FILE* file;
 
     /* Check for arguments */
-    if(argc != 2)
+    if(argc < 2 || argc > 3)
     {
-        fprintf(stderr, "Usage: Compress [Input ROM]\n");
+        fprintf(stderr, "Usage: %s [Input ROM] <Output ROM>\n");
         exit(1);
     }
 
@@ -521,35 +502,48 @@ void errorCheck(int argc, char** argv)
         exit(1);
     }
 
-    /* Check that table.txt exists */
-    file = fopen("table.txt", "r");
+    /* Check that dmaTable.dat exists */
+    file = fopen("dmaTable.dat", "r");
     if(file == NULL)
     {
-        perror("table.txt");
-        fclose(file);
+        perror("dmaTable.dat");
+        fprintf(stderr, "Please make sure to make a dmaTable.dat file\n");
         exit(1);
     }
 
     /* Check that output ROM is writeable */
-    i = strlen(argv[1]) + 5;
-    name = malloc(i);
-    strcpy(name, argv[1]);
-    for(i; i >= 0; i--)
+    if(argc == 2)
     {
-        if(name[i] == '.')
+        i = strlen(argv[1]) + 5;
+        name = malloc(i);
+        strcpy(name, argv[1]);
+        for(i; i >= 0; i--)
         {
-            name[i] = '\0';
-            break;
+            if(name[i] == '.')
+            {
+                name[i] = '\0';
+                break;
+            }
         }
-    }
-    strcat(name, "-comp.z64");
-    file = fopen(name, "wb");
-    if(file == NULL)
-    {
-        perror(name);
+        strcat(name, "-comp.z64");
+        file = fopen(name, "wb");
+        if(file == NULL)
+        {
+            perror(name);
+            free(name);
+            exit(1);
+        }
         fclose(file);
-        free(name);
-        exit(1);
     }
-    fclose(file);
+    else
+    {
+        file = fopen(argv[2], "wb");
+        if(file == NULL)
+        {
+            perror(argv[2]);
+            exit(1);
+        }
+        fclose(file);
+        name = argv[2];
+    }
 }

@@ -55,10 +55,12 @@ int main(int argc, char** argv)
     {
         tab = getTableEnt(i);
         refTab[i] = (tab.endP == 0) ? '0' : '1';
+        if(tab.endP == 0xFFFFFFFF)
+            refTab[i] = 0;
     }
 
     /* Write fileTab to table.bin */    
-    file = fopen("table.txt", "w");
+    file = fopen("dmaTable.dat", "w");
     fwrite(refTab, tabCount, 1, file);
     fclose(file);
     free(inROM);
@@ -69,41 +71,19 @@ int main(int argc, char** argv)
 
 uint32_t findTable()
 {
-    uint32_t i, temp;
+    uint32_t i;
     uint32_t* tempROM;
 
-    i = 0;
     tempROM = (uint32_t*)inROM;
 
-    while(i+4 < UINTSIZE)
+    for(i = 1048; i+4 < UINTSIZE; i += 4)
     {
-        /* This marks the begining of the filetable */
-        byteSwap(temp, tempROM[i]);
-        if(temp == 0x7A656C64)
-        {
-            byteSwap(temp, tempROM[i+1]);
-            if(temp == 0x61407372)
-            {
-                byteSwap(temp, tempROM[i+2]);
-                if((temp & 0xFF000000) == 0x64000000)
-                {
-                    /* Find first entry in file table */
-                    i += 8;
-                    byteSwap(temp, tempROM[i]);
-                    while(temp != 0x00001060)
-                    {
-                        i += 4;
-                        byteSwap(temp, tempROM[i]);
-                    }
-                    return((i-4) * sizeof(uint32_t));
-                }
-            }
-        }
-
-        i += 4;
+        if(tempROM[i] == 0x00000000)
+            if(tempROM[i+1] == 0x60100000)
+                return(i * 4);
     }
 
-    fprintf(stderr, "Error: Couldn't find file table\n");
+    fprintf(stderr, "Error: Couldn't find dma table\n");
     exit(1);
 }
 
@@ -127,7 +107,7 @@ void errorCheck(int argc, char** argv)
     /* Check for arguments */
     if(argc != 2)
     {
-        fprintf(stderr, "Usage: TabExt [Input ROM]\n");
+        fprintf(stderr, "Usage: %s [Input ROM]\n", argv[0]);
         exit(1);
     }
 
@@ -136,7 +116,6 @@ void errorCheck(int argc, char** argv)
     if(file == NULL)
     {
         perror(argv[1]);
-        fclose(file);
         exit(1);
     }
 
