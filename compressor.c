@@ -4,13 +4,13 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include "bSwap.h"
 #include "yaz0.c"
 #include "crc.c"
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
-#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
 
 /* Structs */
 typedef struct
@@ -82,7 +82,7 @@ int main(int argc, char** argv)
     table_t tab;
 
     errorCheck(argc, argv);
-    printf("Starting compression.\n");
+    printf("Zelda64 Compressor, Version 1\n");
     fflush(stdout);
 
     /* Open input, read into inROM */
@@ -160,6 +160,7 @@ int main(int argc, char** argv)
     numCores = getNumCores();
     threads = malloc(sizeof(pthread_t) * numCores);
     printf("Detected %d cores.\n", (numCores));
+    printf("Starting compression.\n");
     fflush(stdout);
 
     /* Create all the threads */
@@ -171,7 +172,7 @@ int main(int argc, char** argv)
         pthread_join(threads[i], NULL);
 
     /* Setup for copying to outROM */
-    printf("Files compressed, writing new ROM.\n");
+    printf("\nFiles compressed, writing new ROM.\n");
     fflush(stdout);
     outROM = calloc(COMPSIZE, sizeof(uint8_t));
     memcpy(outROM, inROM, tabStart + tabSize);
@@ -209,10 +210,10 @@ int main(int argc, char** argv)
                 tab.endP = tab.startP + size;
 
             memcpy(outROM + tab.startP, out[i].data, size);
-            byteSwap(tab.startV, tab.startV);
-            byteSwap(tab.endV, tab.endV);
-            byteSwap(tab.startP, tab.startP);
-            byteSwap(tab.endP, tab.endP);
+			tab.startV = bSwap_32(tab.startV);
+			tab.endV   = bSwap_32(tab.endV);
+			tab.startP = bSwap_32(tab.startP);
+			tab.endP   = bSwap_32(tab.endP);
             memcpy(outROM + tabStart, &tab, sizeof(table_t));
         }
 
@@ -243,7 +244,8 @@ int main(int argc, char** argv)
 
     printf("Compression complete.\n");
     fflush(stdout);
-    free(name);
+    if(argc > 2)
+        free(name);
     return(0);
 }
 
@@ -254,6 +256,9 @@ uint32_t findTable(uint8_t* argROM)
 
     tempROM = (uint32_t*)argROM;
 
+    /* Start at the end of the makerom (0x10600000) */
+    /* Look for dma entry for the makeom */
+    /* Should work for all Zelda64 titles */
     for(i = 1048; i+4 < UINTSIZE; i += 4)
     {
         if(tempROM[i] == 0x00000000)
@@ -261,16 +266,16 @@ uint32_t findTable(uint8_t* argROM)
                 return(i * 4);
     }
 
-    fprintf(stderr, "Error: Couldn't find dma table!\n");
+    fprintf(stderr, "Error: Couldn't find dma table in ROM!\n");
     exit(1);
 }
 
 void getTableEnt(table_t* tab, uint32_t* files, uint32_t i)
 {
-    byteSwap(tab->startV, files[i*4]);
-    byteSwap(tab->endV,   files[(i*4)+1]);
-    byteSwap(tab->startP, files[(i*4)+2]);
-    byteSwap(tab->endP,   files[(i*4)+3]);
+	tab->startV = bSwap_32(files[i*4]);
+	tab->endV   = bSwap_32(files[(i*4)+1]);
+	tab->startP = bSwap_32(files[(i*4)+2]);
+	tab->endP   = bSwap_32(files[(i*4)+3]);
 }
 
 void* threadFunc(void* null)
@@ -312,7 +317,7 @@ void* threadFunc(void* null)
             }
             else
             {
-                size = a->srcSize + 0x160;
+                size = a->srcSize + 0x250;
                 a->dst = calloc(size, sizeof(uint8_t));
                 yaz0_encode(a->src, a->srcSize, a->dst, &(size));
                 out[i].comp = 1;
@@ -449,24 +454,27 @@ int32_t getNumCores()
 
 int32_t getNext()
 {
+    double percent;
     int32_t file, temp;
 
-    /* Counter mutex */
     pthread_mutex_lock(&filelock);
+    
     file = nextFile++;
-    pthread_mutex_unlock(&filelock);
 
     /* Progress tracker */
-    if((file % 150) == 0)
+    if (file <= numFiles)
     {
-        temp = numFiles - file;
-        printf("%#4d files remaining...\n", (temp + 2));
+        percent = file * 100;
+        percent /= numFiles;
+        printf("\33[2K\r%d/%d files complete (%.2lf%)", file, numFiles, percent);
         fflush(stdout);
     }
-
-    /* Base case */
-    if (file > numFiles)
+    else
+    {
         file = -1;
+    }
+    
+    pthread_mutex_unlock(&filelock);
 
     return(file);
 }
@@ -514,7 +522,7 @@ void errorCheck(int argc, char** argv)
     /* Check that output ROM is writeable */
     if(argc == 2)
     {
-        i = strlen(argv[1]) + 5;
+        i = strlen(argv[1]) + 6;
         name = malloc(i);
         strcpy(name, argv[1]);
         for(i; i >= 0; i--)
