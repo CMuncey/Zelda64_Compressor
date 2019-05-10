@@ -244,7 +244,7 @@ int main(int argc, char** argv)
 
     printf("Compression complete.\n");
     fflush(stdout);
-    if(argc > 2)
+    if(argc != 3)
         free(name);
     return(0);
 }

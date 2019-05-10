@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include "bSwap.h"
 #include "yaz0.c"
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
-#define byteSwap(x, y) asm("bswap %%eax" : "=a"(x) : "a"(y))
 
 /* Structs */
 typedef struct
@@ -91,10 +91,10 @@ table_t getTableEnt(uint32_t i)
 {
     table_t tab;
 
-    byteSwap(tab.startV, fileTab[i*4]);
-    byteSwap(tab.endV,   fileTab[(i*4)+1]);
-    byteSwap(tab.startP, fileTab[(i*4)+2]);
-    byteSwap(tab.endP,   fileTab[(i*4)+3]);
+    tab.startV = bSwap_32(fileTab[i*4]);
+    tab.endV   = bSwap_32(fileTab[(i*4)+1]);
+    tab.startP = bSwap_32(fileTab[(i*4)+2]);
+    tab.endP   = bSwap_32(fileTab[(i*4)+3]);
 
     return(tab);
 }
