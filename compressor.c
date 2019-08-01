@@ -68,6 +68,7 @@ uint8_t* refTab;
 pthread_mutex_t filelock;
 pthread_mutex_t countlock;
 int32_t numFiles, nextFile, arcCount;
+int32_t junk;
 uint32_t* fileTab;
 archive_t* archive;
 output_t* out;
@@ -88,7 +89,7 @@ int main(int argc, char** argv)
     /* Open input, read into inROM */
     file = fopen(argv[1], "rb");
     inROM = calloc(DCMPSIZE, sizeof(uint8_t));
-    fread(inROM, DCMPSIZE, 1, file);
+    junk = fread(inROM, DCMPSIZE, 1, file);
     fclose(file);
 
     /* Read archive if it exists*/
@@ -99,7 +100,7 @@ int main(int argc, char** argv)
         printf("Loading Archive.\n");
         fflush(stdout);
         archive = malloc(sizeof(archive_t));
-        fread(&(archive->fileCount), sizeof(uint32_t), 1, file);
+        junk = fread(&(archive->fileCount), sizeof(uint32_t), 1, file);
 
         /* Allocate space for files and sizes */
         archive->refSize = malloc(sizeof(uint32_t) * archive->fileCount);
@@ -111,16 +112,16 @@ int main(int argc, char** argv)
         for(i = 0; i < archive->fileCount; i++)
         {
             /* Decompressed "Reference" file */
-            fread(&tempSize, sizeof(uint32_t), 1, file);
+            junk = fread(&tempSize, sizeof(uint32_t), 1, file);
             archive->ref[i] = malloc(tempSize);
             archive->refSize[i] = tempSize;
-            fread(archive->ref[i], 1, tempSize, file);
+            junk = fread(archive->ref[i], 1, tempSize, file);
 
             /* Compressed "Source" file */
-            fread(&tempSize, sizeof(uint32_t), 1, file);
+            junk = fread(&tempSize, sizeof(uint32_t), 1, file);
             archive->src[i] = malloc(tempSize);
             archive->srcSize[i] = tempSize;
-            fread(archive->src[i], 1, tempSize, file);
+            junk = fread(archive->src[i], 1, tempSize, file);
         }
         fclose(file);
     }
@@ -360,12 +361,12 @@ void makeArchive(char* fileOne, char* fileTwo)
     /* Open and read the input files */
     file = fopen(fileOne, "rb");
     inROM = calloc(DCMPSIZE, sizeof(uint8_t));
-    fread(inROM, 1, DCMPSIZE, file);
+    junk = fread(inROM, 1, DCMPSIZE, file);
     fclose(file);
 
     file = fopen(fileTwo, "rb");
     tempROM = calloc(COMPSIZE, sizeof(uint8_t));
-    fread(tempROM, 1, COMPSIZE, file);
+    junk = fread(tempROM, 1, COMPSIZE, file);
     fclose(file);
 
     /* Find some info on the DMAtable */
@@ -382,7 +383,7 @@ void makeArchive(char* fileOne, char* fileTwo)
     {
         getTableEnt(&tab, fileTab, i);
 
-        if(tab.endP != 0)
+        if(tab.endP != 0 && tab.endP != 0xFFFFFFFF)
             fileCount++;
     }
 
@@ -395,7 +396,7 @@ void makeArchive(char* fileOne, char* fileTwo)
     {
         getTableEnt(&tab, fileTab, i);
 
-        if(tab.endP != 0)
+        if(tab.endP != 0 && tab.endP != 0xFFFFFFFF)
         {
             /* Write the size and data for the decompressed portion */
             fileSize = tab.endV - tab.startV;
@@ -466,7 +467,7 @@ int32_t getNext()
     {
         percent = file * 100;
         percent /= numFiles;
-        printf("\33[2K\r%d/%d files complete (%.2lf%)", file, numFiles, percent);
+        printf("\33[2K\r%d/%d files complete (%.2lf%%)", file, numFiles, percent);
         fflush(stdout);
     }
     else
@@ -487,7 +488,7 @@ void errorCheck(int argc, char** argv)
     /* Check for arguments */
     if(argc < 2 || argc > 3)
     {
-        fprintf(stderr, "Usage: %s [Input ROM] <Output ROM>\n");
+        fprintf(stderr, "Usage: %s [Input ROM] <Output ROM>\n", argv[0]);
         exit(1);
     }
 
@@ -496,7 +497,6 @@ void errorCheck(int argc, char** argv)
     if(file == NULL)
     {
         perror(argv[1]);
-        fclose(file);
         exit(1);
     }
 
