@@ -137,7 +137,7 @@ int main(int argc, char** argv)
     /* Default to 1 (compress), set exclusions to 0 */
     file = fopen("dmaTable.dat", "r");
     size = tabCount - 1;
-    refTab = calloc(sizeof(uint8_t) * size);
+    refTab = malloc(sizeof(uint8_t) * size);
     memset(refTab, 1, size);
 
     /* The first 3 files are never compressed */
