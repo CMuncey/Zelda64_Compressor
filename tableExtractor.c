@@ -7,6 +7,7 @@
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
+#define FILENAME "dmaTable.dat"
 
 /* Structs */
 typedef struct
@@ -49,19 +50,22 @@ int main(int argc, char** argv)
     tabSize = tab.endV - tab.startV;
     tabCount = tabSize / 16;
 
-    /* Fill refTab with 1 for compressed, 0 otherwise */
-    refTab = malloc(tabCount);
-    for(i = 0; i < tabCount; i++)
+    /* Open the file */
+    file = fopen(FILENAME, "w");
+    
+    /* Allocate space, add first 3 files to exclusion list */
+    refTab = malloc(tabCount-1);
+    fprintf(file, "0 1 2");
+    
+    /* If file is decompressed, write the number to file */
+    for(i = 3; i < tabCount; i++)
     {
         tab = getTableEnt(i);
-        refTab[i] = (tab.endP == 0) ? '0' : '1';
-        if(tab.endP == 0xFFFFFFFF)
-            refTab[i] = 0;
+        if(tab.endP == 0 && tab.endP != 0xFFFFFFFF)
+            fprintf(file, " %d", i);
     }
 
-    /* Write fileTab to table.bin */    
-    file = fopen("dmaTable.dat", "w");
-    fwrite(refTab, tabCount, 1, file);
+    /* Clean up memory */    
     fclose(file);
     free(inROM);
     free(refTab);
@@ -83,7 +87,7 @@ uint32_t findTable()
                 return(i * 4);
     }
 
-    fprintf(stderr, "Error: Couldn't find dma table\n");
+    fprintf(stderr, "Error: Couldn't find dma table in the ROM\n");
     exit(1);
 }
 
@@ -101,7 +105,6 @@ table_t getTableEnt(uint32_t i)
 
 void errorCheck(int argc, char** argv)
 {
-    int i;
     FILE* file;
 
     /* Check for arguments */
@@ -121,11 +124,20 @@ void errorCheck(int argc, char** argv)
 
     /* Check that input ROM is correct size */
     fseek(file, 0, SEEK_END);
-    i = ftell(file);
-    fclose(file);
-    if(i != COMPSIZE)
+    if(ftell(file) != COMPSIZE)
     {
-        fprintf(stderr, "Warning: Invalid input ROM size\n");
+        fprintf(stderr, "Error: Invalid input ROM size\n");
+        fclose(file);
         exit(1);
     }
+    fclose(file);
+
+    /* Check that FILENAME is writable */
+    file = fopen(FILENAME, "w");
+    if(file == NULL)
+    {
+        perror(FILENAME);
+        exit(1);
+    }
+    fclose(file);
 }

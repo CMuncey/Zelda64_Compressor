@@ -8,6 +8,10 @@
 #include "yaz0.c"
 #include "crc.c"
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
 #define DCMPSIZE 0x4000000
@@ -21,16 +25,6 @@ typedef struct
     uint32_t   endP;
 }
 table_t;
-
-typedef struct 
-{
-    uint32_t num;
-    uint8_t* src;
-    uint8_t* dst;
-    int  srcSize;
-    table_t  tab;
-}
-args_t;
 
 typedef struct
 {
@@ -56,7 +50,7 @@ uint32_t findTable(uint8_t*);
 void     getTableEnt(table_t*, uint32_t*, uint32_t);
 void*    threadFunc(void*);
 void     errorCheck(int, char**);
-void     makeArchive(char*, char*);
+void     makeArchive();
 int32_t  getNumCores();
 int32_t  getNext();
 
@@ -78,12 +72,12 @@ int main(int argc, char** argv)
     FILE* file;
     int32_t tabStart, tabSize, tabCount;
     volatile int32_t prev, prevComp;
-    int32_t i, size, numCores, tempSize;
+    int32_t i, j, size, numCores, tempSize;
     pthread_t* threads;
     table_t tab;
 
     errorCheck(argc, argv);
-    printf("Zelda64 Compressor, Version 1\n");
+    printf("Zelda64 Compressor, Version 2\n");
     fflush(stdout);
 
     /* Open input, read into inROM */
@@ -101,7 +95,7 @@ int main(int argc, char** argv)
         fflush(stdout);
         archive = malloc(sizeof(archive_t));
         junk = fread(&(archive->fileCount), sizeof(uint32_t), 1, file);
-
+        
         /* Allocate space for files and sizes */
         archive->refSize = malloc(sizeof(uint32_t) * archive->fileCount);
         archive->srcSize = malloc(sizeof(uint32_t) * archive->fileCount);
@@ -139,21 +133,37 @@ int main(int argc, char** argv)
     tabSize = tab.endV - tab.startV;
     tabCount = tabSize / 16;
 
-    /* Read in compression reference */
+    /* Allocate space for the exclusion list */
+    /* Default to 1 (compress), set exclusions to 0 */
     file = fopen("dmaTable.dat", "r");
-    fseek(file, 0, SEEK_END);
-    size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    refTab = malloc(size);
-    for(i = 0; i < size; i++)
-        refTab[i] = (fgetc(file) == '1') ? 1 : 0;
+    size = tabCount - 1;
+    refTab = calloc(sizeof(uint8_t) * size);
+    memset(refTab, 1, size);
+
+    /* The first 3 files are never compressed */
+    /* They should never be given to the compression function anyway though */
+    refTab[0] = refTab[1] = refTab[2] = 0;
+    
+    /* Read in the rest of the exclusion list */
+    for(i = 0; fscanf(file, "%d", &j) == 1; i++)
+    {
+        /* Bounds check */
+        if(j < 0 || j > size)
+        {
+            fprintf(stderr, "Error: Entry %d in dmaTable.dat is out of bounds\n", i);
+            exit(1);
+        }
+
+        /* Set refTab at that spot to 0 for no compression */
+        refTab[j] = 0;
+    }
     fclose(file);
 
     /* Initialise some stuff */
     out = malloc(sizeof(output_t) * tabCount);
     pthread_mutex_init(&filelock, NULL);
     pthread_mutex_init(&countlock, NULL);
-    numFiles = tabCount - 3;
+    numFiles = tabCount;
     nextFile = 3;
     arcCount = 0;
 
@@ -174,7 +184,6 @@ int main(int argc, char** argv)
 
     /* Setup for copying to outROM */
     printf("\nFiles compressed, writing new ROM.\n");
-    fflush(stdout);
     outROM = calloc(COMPSIZE, sizeof(uint8_t));
     memcpy(outROM, inROM, tabStart + tabSize);
     prev = tabStart + tabSize;
@@ -194,7 +203,6 @@ int main(int argc, char** argv)
     }
     free(threads);
     free(refTab);
-    free(inROM);
 
     /* Copy to outROM loop */
     for(i = 3; i < tabCount; i++)
@@ -210,6 +218,16 @@ int main(int argc, char** argv)
             if(out[i].comp)
                 tab.endP = tab.startP + size;
 
+            if(tab.endP > COMPSIZE)
+            {
+                fprintf(stderr, "Warning: File %d has gone out of bounds\n", i);
+                fprintf(stderr, "         tab.startV = %8d | 0x%08x\n", tab.startV, tab.startV);
+                fprintf(stderr, "         tab.endV   = %8d | 0x%08x\n", tab.endV, tab.endV);
+                fprintf(stderr, "         tab.startP = %8d | 0x%08x\n", tab.startP, tab.startP);
+                fprintf(stderr, "         tab.endP   = %8d | 0x%08x\n", tab.endP, tab.endP);
+                fprintf(stderr, "         size       = %8d | 0x%08x\n", size, size);
+            }
+
             memcpy(outROM + tab.startP, out[i].data, size);
 			tab.startV = bSwap_32(tab.startV);
 			tab.endV   = bSwap_32(tab.endV);
@@ -218,7 +236,6 @@ int main(int argc, char** argv)
             memcpy(outROM + tabStart, &tab, sizeof(table_t));
         }
 
-        /* Setup for next iteration */
         prev += size;
         prevComp = out[i].comp;
 
@@ -230,7 +247,6 @@ int main(int argc, char** argv)
     file = fopen(name, "wb");
     fwrite(outROM, COMPSIZE, 1, file);
     fclose(file);
-    free(outROM);
 
     /* Fix the CRC using some kind of magic or something */
     fix_crc(name);
@@ -239,14 +255,14 @@ int main(int argc, char** argv)
     if(archive == NULL)
     {
         printf("Creating archive.\n");
-        fflush(stdout);
         makeArchive(argv[1], name);
     }
 
     printf("Compression complete.\n");
-    fflush(stdout);
     if(argc != 3)
         free(name);
+    free(inROM);
+    free(outROM);
     return(0);
 }
 
@@ -281,21 +297,17 @@ void getTableEnt(table_t* tab, uint32_t* files, uint32_t i)
 
 void* threadFunc(void* null)
 {
-    args_t* a;
-    table_t t;
-    int32_t next, i, nextArchive, size;
+    uint8_t* src;
+    uint8_t* dst;
+    table_t    t;
+    int32_t i, nextArchive, size, srcSize;
 
-    while((next = getNext()) != -1)
+    while((i = getNext()) != -1)
     {
-        a = malloc(sizeof(args_t));
-        a->num = next;
-        getTableEnt(&(a->tab), fileTab, next);
-        t = a->tab;
-        i = a->num;
-
-        /* Setup the src*/
-        a->srcSize = t.endV - t.startV;
-        a->src = inROM + t.startV;
+        /* Setup the src */
+        getTableEnt(&(t), fileTab, i);
+        srcSize = t.endV - t.startV;
+        src = inROM + t.startV;
 
         /* If needed, compress and fix size */
         /* Otherwise, just copy src into out */
@@ -307,79 +319,63 @@ void* threadFunc(void* null)
 
             /* If uncompressed is the same as archive, just copy/paste the compressed */
             /* Otherwise, compress it manually */
-            if((archive != NULL) && (memcmp(a->src, archive->ref[nextArchive], archive->refSize[nextArchive]) == 0))
+            if((archive != NULL) && (memcmp(src, archive->ref[nextArchive], archive->refSize[nextArchive]) == 0))
             {
                 out[i].comp = 1;
                 size = archive->srcSize[nextArchive];
                 out[i].data = malloc(size);
                 memcpy(out[i].data, archive->src[nextArchive], size);
-                free(archive->ref[nextArchive]);
-                free(archive->src[nextArchive]);
             }
             else
             {
-                size = a->srcSize + 0x250;
-                a->dst = calloc(size, sizeof(uint8_t));
-                yaz0_encode(a->src, a->srcSize, a->dst, &(size));
+                size = srcSize + 0x250;
+                dst = calloc(size, sizeof(uint8_t));
+                yaz0_encode(src, srcSize, dst, &(size));
                 out[i].comp = 1;
                 out[i].data = malloc(size);
-                memcpy(out[i].data, a->dst, size);
-                free(a->dst);
-                if(archive != NULL)
-                {
-                    free(archive->ref[nextArchive]);
-                    free(archive->src[nextArchive]);
-                }
+                memcpy(out[i].data, dst, size);
+            }
+            
+            if(archive != NULL)
+            {
+                free(archive->ref[nextArchive]);
+                free(archive->src[nextArchive]);
             }
         }
         else
         {
             out[i].comp = 0;
-            size = a->srcSize;
+            size = srcSize;
             out[i].data = malloc(size);
-            memcpy(out[i].data, a->src, size);
+            memcpy(out[i].data, src, size);
         }
 
         /* Set up the table entry and size */
         out[i].table = t;
         out[i].size = size;
-        free(a);
     }
 
     return(NULL);
 }
 
-void makeArchive(char* fileOne, char* fileTwo)
+void makeArchive()
 {
     table_t tab;
-    uint32_t tabSize, tabCount, tabStart, i, fileCount;
-    uint32_t fileSize;
-    archive_t archive;
-    uint8_t* tempROM;
+    uint32_t tabSize, tabCount, tabStart;
+    uint32_t fileSize, fileCount, i;
     FILE* file;
 
-    /* Open and read the input files */
-    file = fopen(fileOne, "rb");
-    inROM = calloc(DCMPSIZE, sizeof(uint8_t));
-    junk = fread(inROM, 1, DCMPSIZE, file);
-    fclose(file);
-
-    file = fopen(fileTwo, "rb");
-    tempROM = calloc(COMPSIZE, sizeof(uint8_t));
-    junk = fread(tempROM, 1, COMPSIZE, file);
-    fclose(file);
-
-    /* Find some info on the DMAtable */
-    tabStart = findTable(tempROM);
-    fileTab = (uint32_t*)(tempROM + tabStart);
+    /* Find DMAtable info */
+    tabStart = findTable(outROM);
+    fileTab = (uint32_t*)(outROM + tabStart);
     getTableEnt(&tab, fileTab, 2);
     tabSize = tab.endV - tab.startV;
     tabCount = tabSize / 16;
-    archive.fileCount = 0;
     fileCount = 0;
 
     /* Find the number of compressed files in the ROM */
-    for(i = 3; i <= tabCount; i++)
+    /* Ignore first 3 files, as they're never compressed */
+    for(i = 3; i < tabCount; i++)
     {
         getTableEnt(&tab, fileTab, i);
 
@@ -389,10 +385,18 @@ void makeArchive(char* fileOne, char* fileTwo)
 
     /* Open output file */
     file = fopen("ARCHIVE.bin", "wb");
-    fwrite(&fileCount, sizeof(uint32_t), 1, file);
+    if(file == NULL)
+    {
+        perror("ARCHIVE.bin");
+        fprintf(stderr, "Error: Could not create archive\n");
+        return;
+    }
 
     /* Write the archive data */
-    for(i = 3; i <= tabCount; i++)
+    fwrite(&fileCount, sizeof(uint32_t), 1, file);
+    
+    /* Write the fileSize and data for each ref & src */
+    for(i = 3; i < tabCount; i++)
     {
         getTableEnt(&tab, fileTab, i);
 
@@ -406,13 +410,11 @@ void makeArchive(char* fileOne, char* fileTwo)
             /* Write the size and data for the compressed portion */
             fileSize = tab.endP - tab.startP;
             fwrite(&fileSize, sizeof(uint32_t), 1, file);
-            fwrite((tempROM + tab.startP), 1, fileSize, file);
+            fwrite((outROM + tab.startP), 1, fileSize, file);
         }
     }
 
     fclose(file);
-    free(tempROM);
-    free(inROM);
 }
 
 int32_t getNumCores()
@@ -463,11 +465,11 @@ int32_t getNext()
     file = nextFile++;
 
     /* Progress tracker */
-    if (file <= numFiles)
+    if (file < numFiles)
     {
-        percent = file * 100;
+        percent = (file+1) * 100;
         percent /= numFiles;
-        printf("\33[2K\r%d/%d files complete (%.2lf%%)", file, numFiles, percent);
+        printf("\33[2K\r%d/%d files complete (%.2lf%%)", file+1, numFiles, percent);
         fflush(stdout);
     }
     else
@@ -515,17 +517,18 @@ void errorCheck(int argc, char** argv)
     if(file == NULL)
     {
         perror("dmaTable.dat");
-        fprintf(stderr, "Please make sure to make a dmaTable.dat file\n");
+        fprintf(stderr, "Please make a dmaTable.dat file first\n");
         exit(1);
     }
 
     /* Check that output ROM is writeable */
+    /* Create output filename if needed */
     if(argc == 2)
     {
         i = strlen(argv[1]) + 6;
         name = malloc(i);
         strcpy(name, argv[1]);
-        for(i; i >= 0; i--)
+        for(; i >= 0; i--)
         {
             if(name[i] == '.')
             {
