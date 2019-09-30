@@ -24,7 +24,7 @@ I got this to compile on Windows, but I needed a specific version of minGW to do
 
 ---
 
-Compressor Usage: Compress.exe [Input ROM] <Output ROM>
+Compressor Usage: Compress.exe [Input ROM] \<Output ROM\>
 
 Table Extractor usage: TabExt.exe [Input ROM]
 
