@@ -58,14 +58,17 @@ int main(int argc, char** argv)
     fprintf(file, "0 1 2");
     
     /* If file is decompressed, write the number to file */
+    /* If the file doesn't exist, write the negative number */
     for(i = 3; i < tabCount; i++)
     {
         tab = getTableEnt(i);
-        if(tab.endP == 0 && tab.endP != 0xFFFFFFFF)
+        if(tab.endP == 0)
             fprintf(file, " %d", i);
+        else if(tab.endP == 0xFFFFFFFF)
+            fprintf(file, " %d", -i);
     }
 
-    /* Clean up memory */    
+    /* Clean up memory */
     fclose(file);
     free(inROM);
     free(refTab);

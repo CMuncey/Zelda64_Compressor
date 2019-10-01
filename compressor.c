@@ -71,7 +71,7 @@ int main(int argc, char** argv)
 {
     FILE* file;
     int32_t tabStart, tabSize, tabCount;
-    volatile int32_t prev, prevComp;
+    volatile int32_t prev; //prevComp;
     int32_t i, j, size, numCores, tempSize;
     pthread_t* threads;
     table_t tab;
@@ -148,14 +148,18 @@ int main(int argc, char** argv)
     for(i = 0; fscanf(file, "%d", &j) == 1; i++)
     {
         /* Bounds check */
-        if(j < 0 || j > size)
+        if(j > size)
         {
             fprintf(stderr, "Error: Entry %d in dmaTable.dat is out of bounds\n", i);
             exit(1);
         }
 
-        /* Set refTab at that spot to 0 for no compression */
-        refTab[j] = 0;
+        /* If j was negative, the file shouldn't exist */
+        /* Otherwise, set file to not compress */
+        if(j < 0)
+            refTab[(j * -1)] = 2;
+        else
+            refTab[j] = 0;
     }
     fclose(file);
 
@@ -187,7 +191,7 @@ int main(int argc, char** argv)
     outROM = calloc(COMPSIZE, sizeof(uint8_t));
     memcpy(outROM, inROM, tabStart + tabSize);
     prev = tabStart + tabSize;
-    prevComp = refTab[2];
+    /* prevComp = refTab[2]; */
     tabStart += 0x20;
 
     /* Free some stuff */
@@ -215,10 +219,12 @@ int main(int argc, char** argv)
         if(tab.startV != tab.endV)
         {
             tab.startP = prev;
-            if(out[i].comp)
+            if(out[i].comp == 1)
                 tab.endP = tab.startP + size;
+            else if(out[i].comp == 2)
+                tab.startP = tab.endP = 0xFFFFFFFF;
 
-            if(tab.endP > COMPSIZE)
+            if(tab.endP != -1 && tab.endP > COMPSIZE)
             {
                 fprintf(stderr, "Warning: File %d has gone out of bounds\n", i);
                 fprintf(stderr, "         tab.startV = %8d | 0x%08x\n", tab.startV, tab.startV);
@@ -228,28 +234,34 @@ int main(int argc, char** argv)
                 fprintf(stderr, "         size       = %8d | 0x%08x\n", size, size);
             }
 
-            memcpy(outROM + tab.startP, out[i].data, size);
-			tab.startV = bSwap_32(tab.startV);
+            /* If the file existed, write it */
+            if(tab.startP != 0xFFFFFFFF)
+                memcpy(outROM + tab.startP, out[i].data, size);
+            
+            /* Write the table entry */
+            tab.startV = bSwap_32(tab.startV);
 			tab.endV   = bSwap_32(tab.endV);
 			tab.startP = bSwap_32(tab.startP);
 			tab.endP   = bSwap_32(tab.endP);
             memcpy(outROM + tabStart, &tab, sizeof(table_t));
         }
 
+        
         prev += size;
-        prevComp = out[i].comp;
-
-        free(out[i].data);
+        /* prevComp = out[i].comp; */
+        
+        if(out[i].data != NULL)
+            free(out[i].data);
     }
     free(out);
 
+    /* Fix the CRC before writing the ROM */
+    fix_crc(outROM);
+    
     /* Make and fill the output ROM */
     file = fopen(name, "wb");
     fwrite(outROM, COMPSIZE, 1, file);
     fclose(file);
-
-    /* Fix the CRC using some kind of magic or something */
-    fix_crc(name);
 
     /* Make the archive if needed */
     if(archive == NULL)
@@ -309,9 +321,10 @@ void* threadFunc(void* null)
         srcSize = t.endV - t.startV;
         src = inROM + t.startV;
 
-        /* If needed, compress and fix size */
+        /* If refTab is 1, compress */
+        /* If refTab is 2, file shouldn't exist */
         /* Otherwise, just copy src into out */
-        if(refTab[i])
+        if(refTab[i] == 1)
         {
             pthread_mutex_lock(&countlock);
             nextArchive = arcCount++;
@@ -341,6 +354,12 @@ void* threadFunc(void* null)
                 free(archive->ref[nextArchive]);
                 free(archive->src[nextArchive]);
             }
+        }
+        else if(refTab[i] == 2)
+        {
+            out[i].comp = 2;
+            size = 0;
+            out[i].data = NULL;
         }
         else
         {
