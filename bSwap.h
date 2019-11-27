@@ -8,7 +8,7 @@
 #define bSwap16(x) _bSwap16(x)
 
 #elif BYTE_ORDER == BIG_ENDIAN
-#define bSwap16(x) (x)
+#define bSwap16(x) _bSwap16(x)
 #define bSwap16(x) (x)
 
 #endif
