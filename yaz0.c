@@ -2,14 +2,14 @@
 #include <stdint.h>
 #include <string.h>
 
-uint32_t RabinKarp(uint8_t*, int32_t, int32_t, uint32_t*);
-uint32_t findBest(uint8_t*, int32_t, int32_t, uint32_t*, uint32_t*, uint32_t*, uint8_t*);
-int32_t  yaz0_internal(uint8_t*, int32_t, uint8_t*);
-void     yaz0_encode(uint8_t*, int32_t, uint8_t*, int*);
+uint32_t RabinKarp(uint8_t*, int, int, uint32_t*);
+uint32_t findBest(uint8_t*, int, int, uint32_t*, uint32_t*, uint32_t*, uint8_t*);
+int      yaz0_internal(uint8_t*, int, uint8_t*);
+void     yaz0_encode(uint8_t*, int, uint8_t*, int*);
 
-uint32_t RabinKarp(uint8_t* src, int32_t srcSize, int32_t srcPos, uint32_t* matchPos)
+uint32_t RabinKarp(uint8_t* src, int srcSize, int srcPos, uint32_t* matchPos)
 {
-    int32_t startPos, smp, i;
+    int startPos, smp, i;
     uint32_t hash, curHash, curSize;
     uint32_t bestSize, bestPos;
 
@@ -30,9 +30,9 @@ uint32_t RabinKarp(uint8_t* src, int32_t srcSize, int32_t srcPos, uint32_t* matc
         startPos = 0;
 
     /* Generate "hash" by converting to an int */
-    hash = bSwap32(*(int32_t*)(src + srcPos));
+    hash = bSwap32(*(int*)(src + srcPos));
     hash = hash >> 8;
-    curHash = bSwap32(*(int32_t*)(src + startPos));
+    curHash = bSwap32(*(int*)(src + startPos));
     curHash = curHash >> 8;
 
     /* Search through data */
@@ -64,9 +64,9 @@ uint32_t RabinKarp(uint8_t* src, int32_t srcSize, int32_t srcPos, uint32_t* matc
     return(bestSize);
 }
 
-uint32_t findBest(uint8_t* src, int32_t srcSize, int32_t srcPos, uint32_t* matchPos, uint32_t* pMatch, uint32_t* pSize, uint8_t* pFlag)
+uint32_t findBest(uint8_t* src, int srcSize, int srcPos, uint32_t* matchPos, uint32_t* pMatch, uint32_t* pSize, uint8_t* pFlag)
 {
-    int32_t rv;
+    int rv;
 
     /* Check to see if this location was found by a look-ahead */
     if(*pFlag == 1)
@@ -83,8 +83,8 @@ uint32_t findBest(uint8_t* src, int32_t srcSize, int32_t srcPos, uint32_t* match
     if(rv >= 3)
     {
         /* Find best match if current one were to be a 1 byte copy */
-        *pSize = RabinKarp(src, srcSize, (srcPos + 1), pMatch);
-        if(*pSize >= (rv + 2))
+        *pSize = RabinKarp(src, srcSize, srcPos+1, pMatch);
+        if(*pSize >= rv+2)
         {
             rv = *pFlag = 1;
             *matchPos = *pMatch;
@@ -94,9 +94,9 @@ uint32_t findBest(uint8_t* src, int32_t srcSize, int32_t srcPos, uint32_t* match
     return(rv);
 }
 
-int32_t yaz0_internal(uint8_t* src, int32_t srcSize, uint8_t* dst)
+int yaz0_internal(uint8_t* src, int srcSize, uint8_t* dst)
 {
-    int32_t dstPos, srcPos, codeBytePos;
+    int dstPos, srcPos, codeBytePos;
     uint32_t numBytes, matchPos, dist, pMatch, pSize;
     uint8_t codeByte, bitmask, pFlag;
 
@@ -119,7 +119,7 @@ int32_t yaz0_internal(uint8_t* src, int32_t srcSize, uint8_t* dst)
         }
 
         /* Three byte encoding */
-        else if(numBytes > 0x11)
+        else if (numBytes > 0x11)
         {
             dist = srcPos - matchPos - 1;
 
@@ -170,9 +170,9 @@ int32_t yaz0_internal(uint8_t* src, int32_t srcSize, uint8_t* dst)
     return(dstPos);
 }
 
-void yaz0_encode(uint8_t* src, int32_t srcSize, uint8_t* dst, int32_t* dstSize)
+void yaz0_encode(uint8_t* src, int srcSize, uint8_t* dst, int* dstSize)
 {
-    int32_t temp;
+    int temp;
 
     /* Write Yaz0 header */
     temp = bSwap32(srcSize);
