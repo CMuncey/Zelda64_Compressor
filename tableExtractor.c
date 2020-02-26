@@ -98,10 +98,10 @@ table_t getTableEnt(uint32_t i)
 {
     table_t tab;
 
-    tab.startV = bSwap_32(fileTab[i*4]);
-    tab.endV   = bSwap_32(fileTab[(i*4)+1]);
-    tab.startP = bSwap_32(fileTab[(i*4)+2]);
-    tab.endP   = bSwap_32(fileTab[(i*4)+3]);
+    tab.startV = bSwap32(fileTab[i*4]);
+    tab.endV   = bSwap32(fileTab[(i*4)+1]);
+    tab.startP = bSwap32(fileTab[(i*4)+2]);
+    tab.endP   = bSwap32(fileTab[(i*4)+3]);
 
     return(tab);
 }

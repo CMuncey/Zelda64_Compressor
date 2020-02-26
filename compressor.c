@@ -507,6 +507,7 @@ int32_t getNumCores()
 int32_t getNext()
 {
     int32_t file, temp;
+    double percent;
 
     pthread_mutex_lock(&filelock);
     
@@ -515,8 +516,9 @@ int32_t getNext()
     /* Progress tracker */
     if (file < numFiles)
     {
-        temp = numFiles - (file + 1);
-        printf("%d files remaining\n", temp);
+        percent = (file+1) * 100;
+        percent /= numFiles;
+        printf("\33[2K\r%d/%d files complete (%.2lf%%)", file+1, numFiles, percent);
         fflush(stdout);
     }
     else
