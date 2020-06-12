@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <unistd.h>
 #include "bSwap.h"
-#include "yaz0.c"
 
 #define UINTSIZE 0x1000000
 #define COMPSIZE 0x2000000
