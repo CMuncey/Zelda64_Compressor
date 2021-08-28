@@ -19,6 +19,10 @@
 #endif
 
 /* Number of extra bytes to add to compression buffer */
+/* Worst case scenario every 8 bytes of input will need 1 more */
+/* byte of output. Also need room for the yaz0 header, 16 bytes */
+/* dstSize = srcSize + (srcSize >> 3) + 16 */
+/* But this is easier and seems to work */
 #define COMPBUFF 0x250
 
 /* Temporary storage for output data */
@@ -36,6 +40,7 @@ void*    threadFunc(void*);
 void     errorCheck(int, char**);
 int32_t  getNumCores();
 int32_t  getNext();
+uint8_t  compare(uint32_t, uint8_t*, uint8_t*);
 /* 1}}} */
 
 /* Globals {{{1 */
@@ -64,7 +69,7 @@ int main(int argc, char** argv)
 	z64dma_t tab;
 
 	errorCheck(argc, argv);
-	printf("Zelda64 Compressor, Version 2\n");
+	printf("Zelda64 Compressor, Version 3\n");
 	fflush(stdout);
 
 	/* Open input, read into inROM */
@@ -125,7 +130,7 @@ int main(int argc, char** argv)
 		/* If j was negative, the file shouldn't exist */
 		/* Otherwise, set file to not compress */
 		if(j < 0)
-			refTab[(~j + 1)] = 2;
+			refTab[-j] = 2;
 		else
 			refTab[j] = 0;
 	}
@@ -254,7 +259,7 @@ void* threadFunc(void* null)
 {
 	uint8_t* src;
 	uint8_t* dst;
-	z64dma_t    t;
+	z64dma_t   t;
 	int32_t i, nextArchive, size, srcSize;
 
 	while((i = getNext()) != -1)
@@ -265,7 +270,7 @@ void* threadFunc(void* null)
 		src = inROM + t.startV;
 
 		/* If refTab is 1, compress */
-		/* If refTab is 2, file shouldn't exist */
+		/* If refTab is 2, file shouldn't exist (OoT doesn't have this) */
 		/* Otherwise, just copy src into out */
 		if(refTab[i] == 1)
 		{
@@ -275,7 +280,8 @@ void* threadFunc(void* null)
 
 			/* If uncompressed is the same as archive, just copy/paste the compressed */
 			/* Otherwise, compress it manually */
-			if((archive != NULL) && (memcmp(src, archive->ref[nextArchive], archive->refSize[nextArchive]) == 0))
+			//(memcmp(src, archive->ref[nextArchive], archive->refSize[nextArchive]) == 0))
+			if((archive != NULL) && compare(archive->refSize[nextArchive], src, archive->ref[nextArchive]))
 			{
 				out[i].comp = 1;
 				size = archive->srcSize[nextArchive];
@@ -365,7 +371,7 @@ int32_t getNumCores()
 /* int32_t getNext() {{{1 */
 int32_t getNext()
 {
-	int32_t file, temp;
+	int32_t file;
 	double percent;
 
 	pthread_mutex_lock(&filelock);
@@ -373,6 +379,8 @@ int32_t getNext()
 	file = nextFile++;
 
 	/* Progress tracker */
+	/* This lies, it says complete as soon as it hands out the number */
+	/* That's why it hangs on 100% for a bit, it's still compressing */
 	if (file < numFiles)
 	{
 		percent = (file+1) * 100;
@@ -394,7 +402,7 @@ int32_t getNext()
 /* void errorCheck(int, char**) {{{1 */
 void errorCheck(int argc, char** argv)
 {
-	int i, j;
+	int i;
 	FILE* file;
 
 	/* Check for arguments */
@@ -458,5 +466,29 @@ void errorCheck(int argc, char** argv)
 		}
 		fclose(file);
 	}
+}
+
+uint8_t compare(uint32_t s, uint8_t* a, uint8_t* b)
+{
+	int i, j;
+	uint64_t* a2;
+	uint64_t* b2;
+
+	/* Do extra comparisons first to get to multiple of 8 */
+	for(i = 0, j = s % 8; i < j; ++i)
+		if(a[i] != b[i])
+			return(0);
+
+	/* Just to make the next part easier */
+	a2 = (uint64_t*)(a + j);
+	b2 = (uint64_t*)(b + j);
+
+	/* Do rest of comparisons 8 at a time */
+	for(i = 0, j = ((s - j) >> 3); i < j; ++i)
+		if(*a2++ != *b2++)
+			return(0);
+
+	/* They matched */
+	return(1);
 }
 /* 1}}} */
