@@ -11,7 +11,7 @@
 #include "z64yaz0.h"
 #include "z64consts.h"
 #include "bSwap.h"
-#include "crc.c"
+#include "z64crc.h"
 
 /* Needed to compile on Windows */
 #ifdef _WIN32
@@ -228,7 +228,7 @@ int main(int argc, char** argv)
 	free(out);
 
 	/* Fix the CRC before writing the ROM */
-	fix_crc(outROM);
+	fixCRC(outROM);
 
 	/* Make and fill the output ROM */
 	file = fopen(outName, "wb");
