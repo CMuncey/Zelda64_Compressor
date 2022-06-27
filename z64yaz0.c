@@ -2,7 +2,7 @@
 
 uint32_t RabinKarp(uint8_t*, int, int, uint32_t*);
 uint32_t findBest(uint8_t*, int, int, uint32_t*, uint32_t*, uint32_t*, uint8_t*);
-int	  yaz0_internal(uint8_t*, int, uint8_t*);
+int	     yaz0_internal(uint8_t*, int, uint8_t*);
 void	 yaz0_encode(uint8_t*, int, uint8_t*, int*);
 
 uint32_t RabinKarp(uint8_t* src, int srcSize, int srcPos, uint32_t* matchPos)
